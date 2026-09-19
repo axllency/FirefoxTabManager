@@ -79,4 +79,6 @@ test('session tabs restored after a week retain their records and last-access ti
   await messageHandler({ type: 'recordActionUsage', action: 'move' });
   await messageHandler({ type: 'recordActionUsage', action: 'move' });
   assert.equal((await messageHandler({ type: 'snapshot' })).preferences.actionUsage.move, 2);
+  await messageHandler({ type: 'setFontSize', fontSize: 16 });
+  assert.equal((await messageHandler({ type: 'snapshot' })).preferences.fontSize, 16);
 });

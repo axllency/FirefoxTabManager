@@ -5,9 +5,9 @@ export interface TabRecord { recordId: string; firstSeen: number; url: string; t
 export interface UrlUsage { lastAccess?: number; activations: number; closedAt?: number; closedAtActiveMs?: number }
 export interface Collection { id: string; name: string; createdAt: number; pinned?: boolean; tabs: { url: string; title: string }[] }
 export interface UndoEntry { id: string; kind: 'close' | 'move'; at: number; atActiveMs?: number; tabs: TabRecord[]; destinationWindowId?: number }
-export interface Preferences { hiddenTopSites: string[]; pinnedTopSites: string[]; actionUsage: Record<string, number> }
+export interface Preferences { hiddenTopSites: string[]; pinnedTopSites: string[]; actionUsage: Record<string, number>; fontSize: number }
 export interface Store { closed: Record<string, TabRecord>; usage: Record<string, UrlUsage>; collections: Collection[]; undo: UndoEntry[]; retention: { elapsedMs: number; activeSince?: number }; weather?: { enabled: boolean; location?: { name: string; latitude: number; longitude: number } }; preferences: Preferences }
-export const EMPTY_STORE: Store = { closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {} } };
+export const EMPTY_STORE: Store = { closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
 
 export function retentionElapsed(retention: Store['retention'], currentTime: number): number {
   return retention.elapsedMs + (retention.activeSince === undefined ? 0 : Math.max(0, currentTime - retention.activeSince));
@@ -83,7 +83,7 @@ export function fitColumnWidths(widths: number[], minimums: number[], budget: nu
   if (total < target) {
     const extra = target - total;
     const titleIndex = result.length === 9 ? 2 : 1;
-    const urlIndex = result.length === 9 ? 5 : 4;
+    const urlIndex = result.length === 9 ? 3 : 4;
     result[titleIndex] += extra / 2;
     result[urlIndex] += extra / 2;
   } else if (total > target) {
@@ -103,15 +103,27 @@ export function fitColumnWidths(widths: number[], minimums: number[], budget: nu
 export function resizeColumns(widths: number[], minimums: number[], index: number, delta: number): number[] {
   if (index <= 0 || index >= widths.length - 1) return [...widths];
   const result = [...widths];
-  const right = result.slice(index + 1);
-  const capacity = right.map((width, i) => Math.max(0, width - minimums[index + 1 + i]));
-  const totalCapacity = capacity.reduce((sum, width) => sum + width, 0);
+  const right = Array.from({ length: Math.max(0, widths.length - index - 2) }, (_, offset) => index + 1 + offset);
+  const left = Array.from({ length: Math.max(0, index - 1) }, (_, offset) => index - 1 - offset);
+  const flexible = [...right, ...left];
+  const totalCapacity = flexible.reduce((sum, i) => sum + Math.max(0, result[i] - minimums[i]), 0);
   const change = Math.max(minimums[index] - result[index], Math.min(delta, totalCapacity));
   if (!change) return result;
   result[index] += change;
-  const weights = change > 0 ? capacity : right;
-  const weightTotal = weights.reduce((sum, width) => sum + width, 0);
-  for (let i = index + 1; i < result.length; i++) result[i] -= change * weights[i - index - 1] / weightTotal;
+  if (change > 0) {
+    let remaining = change;
+    for (const group of [right, left]) {
+      const capacities = group.map(i => Math.max(0, result[i] - minimums[i]));
+      const capacity = capacities.reduce((sum, value) => sum + value, 0);
+      const amount = Math.min(remaining, capacity);
+      if (amount && capacity) group.forEach((i, position) => { result[i] -= amount * capacities[position] / capacity; });
+      remaining -= amount;
+    }
+  } else {
+    const receivers = right.length ? right : left;
+    const weightTotal = receivers.reduce((sum, i) => sum + result[i], 0);
+    if (weightTotal) receivers.forEach(i => { result[i] -= change * result[i] / weightTotal; });
+  }
   return result;
 }
 export interface TabFilter { query: string; queryMode?: 'is' | 'not'; sort: string; sortDirection?: SortDirection; ageMode: 'any' | 'older' | 'newer'; ageDays: number; accessMode: 'any' | 'within' | 'before'; accessDays: number }

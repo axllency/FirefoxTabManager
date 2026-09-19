@@ -166,4 +166,11 @@ test('column resize keeps total width fixed and distributes the change to the ri
   assert.equal(narrow[0], widths[0]);
   assert.ok(Math.abs(narrow.reduce((sum, width) => sum + width, 0) - 400) < 0.001);
   assert.deepEqual(resizeColumns(widths, minimums, 0, 30), widths);
+  const nineWidths = [22, 28, 180, 80, 90, 180, 70, 80, 28];
+  const nineMinimums = [22, 28, 100, 70, 76, 100, 48, 64, 28];
+  const rightmost = resizeColumns(nineWidths, nineMinimums, 7, 12);
+  assert.equal(rightmost[0], 22, 'checkbox column remains fixed');
+  assert.equal(rightmost[7], 92, 'rightmost data column expands');
+  assert.equal(rightmost[8], 28, 'actions column remains fixed');
+  assert.ok(Math.abs(rightmost.reduce((sum, width) => sum + width, 0) - nineWidths.reduce((sum, width) => sum + width, 0)) < 0.001);
 });

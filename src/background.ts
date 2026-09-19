@@ -306,6 +306,11 @@ async function action(message: any): Promise<any> {
     store.preferences.actionUsage[message.action] = (store.preferences.actionUsage[message.action] || 0) + 1;
     await save(); return store.preferences.actionUsage;
   }
+  if (message.type === 'setFontSize') {
+    if (![12, 14, 16, 18].includes(message.fontSize)) throw Error('Unsupported font size');
+    store.preferences.fontSize = message.fontSize;
+    await save(); return store.preferences.fontSize;
+  }
   if (message.type === 'openCollection') {
     const collection = store.collections.find(c => c.id === message.collectionId); if (!collection) throw Error('Collection not found');
     const items = message.url ? collection.tabs.filter(t => t.url === message.url).slice(0, 1) : collection.tabs;
@@ -343,7 +348,12 @@ async function action(message: any): Promise<any> {
   }
   if (message.type === 'discard') {
     const errors: string[] = []; let count = 0;
-    for (const tab of tabs) try { await browser.tabs.discard(tab.id); count++; } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
+    for (const tab of tabs) try {
+      await browser.tabs.discard(tab.id);
+      const discarded = await browser.tabs.get(tab.id);
+      if (!discarded.discarded) throw Error('Firefox did not mark the tab as unloaded.');
+      count++;
+    } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
     return { count, errors };
   }
   if (message.type === 'move') {

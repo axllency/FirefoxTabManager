@@ -2,7 +2,7 @@ import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabe
 declare const browser: any;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
-const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {} } };
+const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
 const bulkActions = [
   ['close', 'Close'], ['discard', 'Unload'], ['saveCollection', 'Save collection'], ['saveClose', 'Save and close'],
   ['export', 'Export URLs'], ['move', 'Combine tabs'], ['duplicates', 'Close duplicates']
@@ -12,8 +12,8 @@ let selected = new Set<number>();
 let filtered: any[] = [];
 let sortDirection: SortDirection = 'desc';
 let currentSort = 'lastAccess';
-const widthKey = 'advanced-tab-manager-column-widths-v5';
-const minColumnWidths = [22, 28, 100, 70, 76, 100, 48, 64, 28];
+const widthKey = 'advanced-tab-manager-column-widths-v6';
+const minColumnWidths = [22, 28, 100, 100, 70, 76, 48, 64, 28];
 let columnWidths: number[] | undefined;
 try {
   const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
@@ -59,7 +59,7 @@ function topBarControls() {
   return `<details class="top-dropdown"><summary>Collections</summary><div class="dropdown-panel collections-panel"><div class="row"><input id="importFile" type="file" accept=".txt,text/plain"><button id="import">Import URL list</button></div><div id="collections"></div></div></details>
     <details class="top-dropdown"><summary>Frequently visited</summary><div id="topSites" class="dropdown-panel"></div></details>
     <div id="weatherSummary" class="weather-summary" role="status">Weather off</div>
-    <div class="dashboard-menu-wrap"><button id="dashboardMenuButton" aria-controls="dashboardMenu" aria-expanded="false">☰ Menu</button><div id="dashboardMenu" class="dashboard-menu hidden" role="region" aria-label="More tools"><div class="menu-commands"><button id="undo">Undo</button>${page === 'popup' ? '<button id="dashboard">Dashboard ↗</button>' : ''}</div><details class="settings-page"><summary>Settings</summary><section class="weather-widget"><h2>Weather settings</h2><div id="weather"></div></section><section><h2>Restore frequently visited</h2><div id="removedTopSites"></div></section></details></div></div>`;
+    <div class="dashboard-menu-wrap"><button id="dashboardMenuButton" aria-controls="dashboardMenu" aria-expanded="false">☰ Menu</button><div id="dashboardMenu" class="dashboard-menu hidden" role="region" aria-label="More tools"><div class="menu-commands"><button id="undo">Undo</button>${page === 'popup' ? '<button id="dashboard">Dashboard ↗</button>' : ''}</div><div class="display-settings"><button id="resetColumns">Reset column widths</button><label>Font size <select id="fontSize"><option value="12">Small</option><option value="14">Default</option><option value="16">Large</option><option value="18">Extra large</option></select></label></div><details class="settings-page"><summary>Settings</summary><section class="weather-widget"><h2>Weather settings</h2><div id="weather"></div></section><section><h2>Restore frequently visited</h2><div id="removedTopSites"></div></section></details></div></div>`;
 }
 
 function layout() {
@@ -137,7 +137,13 @@ function layout() {
 }
 function notice(message: string, source = 'general') { const status = $('#notice'); status.textContent = message; status.dataset.source = message ? source : ''; }
 async function run(fn: () => Promise<void>, source = 'general') { try { await fn(); } catch (e) { notice(String(e), source); } }
-async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
+async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); applyFontSize(); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
+function applyFontSize() {
+  const size = [12, 14, 16, 18].includes(state.preferences?.fontSize) ? state.preferences.fontSize : 14;
+  document.documentElement.style.fontSize = `${size}px`;
+  const select = $('#fontSize') as HTMLSelectElement | null;
+  if (select) select.value = String(size);
+}
 function renderActionOptions() {
   const select = $('#bulk') as HTMLSelectElement;
   const current = select.value;
@@ -148,7 +154,7 @@ function renderActionOptions() {
   if (ordered.some(([value]) => value === current)) select.value = current;
 }
 function renderTabRow(t: any) {
-  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${String(t.isLoaded)}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
+  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${String(t.isLoaded)}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
 }
 function renderTabs() {
   filtered = filterAndSortTabs(state.tabs, {
@@ -166,7 +172,7 @@ function renderTabs() {
   selectionButton.textContent = selected.size ? 'Clear selection' : 'Select results';
   selectionButton.disabled = !selected.size && !filtered.length;
   ($('#bulkGo') as HTMLButtonElement).disabled = selected.size === 0;
-  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('First seen', 'firstSeen', 3)}${heading('Last active', 'lastAccess', 4)}${heading('URL', 'url', 5)}${heading('Window', 'windowId', 6)}${heading('isLoaded', 'isLoaded', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
+  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('URL', 'url', 3)}${heading('Age', 'firstSeen', 4)}${heading('Last active', 'lastAccess', 5)}${heading('Window', 'windowId', 6)}${heading('isLoaded', 'isLoaded', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
   applyColumnWidths();
 }
 async function bulk(action: string, override?: number[]) {
@@ -193,6 +199,20 @@ function initTopBar() {
   const menuButton = $('#dashboardMenuButton');
   const dropdowns = [...document.querySelectorAll<HTMLDetailsElement>('.top-dropdown')];
   const closeMenu = () => { menu.classList.add('hidden'); menuButton.setAttribute('aria-expanded', 'false'); };
+  $('#resetColumns').addEventListener('click', () => {
+    columnWidths = undefined;
+    localStorage.removeItem(widthKey);
+    $('#tabs').style.removeProperty('--tab-columns');
+    renderTabs();
+    notice('Column widths reset.');
+  });
+  $('#fontSize').addEventListener('change', e => run(async () => {
+    const fontSize = Number((e.target as HTMLSelectElement).value);
+    await send('setFontSize', { fontSize });
+    state.preferences.fontSize = fontSize;
+    applyFontSize();
+    renderTabs();
+  }));
   menuButton.addEventListener('click', () => {
     menu.classList.toggle('hidden');
     menuButton.setAttribute('aria-expanded', String(!menu.classList.contains('hidden')));
