@@ -18,6 +18,8 @@ test('table URLs are compact and frequent sites collapse to root origins', () =>
   assert.equal(rootDomainUrl('https://www.example.com/a?q=1'), 'https://example.com/');
   assert.equal(rootDomainUrl('about:config'), null);
   assert.equal(frequentSiteDisplayName('https://www.example.com/a?q=1'), 'Example');
+  assert.equal(frequentSiteDisplayName('https://www.example.org/a'), 'Example.org');
+  assert.equal(frequentSiteDisplayName('https://www.paypal.com.evil/a'), 'Paypal.com.evil');
   assert.equal(frequentSiteDisplayName('https://developer.mozilla.org/'), 'developer.mozilla.org');
 });
 test('selector uses 15 percent horizontal and 10 percent vertical insets', () => {

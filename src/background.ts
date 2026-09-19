@@ -18,6 +18,62 @@ const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const eligible = (tab: any) => tab && !tab.incognito && tab.id >= 0 && !!tab.windowId;
 const sanitizeBrowserTab = (tab: any) => ({ ...tab, title: sanitizeTabTitle(tab?.title), url: sanitizeTabUrl(tab?.url) });
+const messageTypes = new Set(['snapshot', 'openDashboard', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move', 'weatherSettings']);
+const requireString = (value: unknown, label: string, max = 256) => {
+  if (typeof value !== 'string' || !value || value.length > max) throw Error(`Invalid ${label}`);
+  return value;
+};
+const requireHttpUrl = (value: unknown) => {
+  const input = requireString(value, 'URL', 16384);
+  const url = new URL(input);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error('Invalid URL');
+  return url.href;
+};
+const requireTabIds = (value: unknown) => {
+  if (!Array.isArray(value) || value.length > 10000 || value.some(id => !Number.isSafeInteger(id) || id < 0)) throw Error('Invalid tab IDs');
+  return [...new Set(value)];
+};
+function validateMessage(input: unknown): any {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid message');
+  const message: any = { ...(input as any) };
+  if (typeof message.type !== 'string' || !messageTypes.has(message.type)) throw Error('Unknown action');
+  if (['focus'].includes(message.type)) {
+    if (!Number.isSafeInteger(message.tabId) || message.tabId < 0) throw Error('Invalid tab ID');
+  }
+  if (['saveCollection', 'duplicates', 'close', 'export', 'discard', 'move'].includes(message.type)) message.tabIds = requireTabIds(message.tabIds);
+  if (message.type === 'saveCollection') {
+    message.name = sanitizeTabTitle(requireString(message.name, 'collection name', 256));
+    message.close = message.close === true;
+  }
+  if (message.type === 'importCollection') {
+    message.name = sanitizeTabTitle(requireString(message.name, 'collection name', 256));
+    if (!Array.isArray(message.urls) || !message.urls.length || message.urls.length > 1000) throw Error('Invalid URL list');
+    message.urls = message.urls.map(requireHttpUrl);
+  }
+  if (['deleteCollection', 'pinCollection', 'openCollection'].includes(message.type)) message.collectionId = requireString(message.collectionId, 'collection ID', 128);
+  if (message.type === 'openCollection') {
+    message.newWindow = message.newWindow === true;
+    if (message.url !== undefined) message.url = requireHttpUrl(message.url);
+  }
+  if (message.type === 'undo' && message.entryId !== undefined) message.entryId = requireString(message.entryId, 'undo ID', 128);
+  if (message.type === 'topSitePreference') {
+    if (!['hidden', 'pinned'].includes(message.preference) || typeof message.enabled !== 'boolean') throw Error('Invalid top-site preference');
+    message.url = requireHttpUrl(message.url);
+  }
+  if (message.type === 'recordActionUsage' && !['close', 'discard', 'saveCollection', 'saveClose', 'export', 'move', 'duplicates'].includes(message.action)) throw Error('Unknown action usage key');
+  if (message.type === 'setFontSize' && ![12, 14, 16, 18].includes(message.fontSize)) throw Error('Unsupported font size');
+  if (message.type === 'move' && message.tabIds.length === 0) throw Error('No tabs selected');
+  if (message.type === 'weatherSettings') {
+    const weather = message.weather;
+    if (!weather || typeof weather !== 'object' || typeof weather.enabled !== 'boolean') throw Error('Invalid weather settings');
+    if (weather.location !== undefined) {
+      const { name, latitude, longitude } = weather.location || {};
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw Error('Invalid weather location');
+      message.weather = { enabled: weather.enabled, location: { name: sanitizeTabTitle(requireString(name, 'weather location', 256)), latitude, longitude } };
+    } else message.weather = { enabled: weather.enabled };
+  }
+  return message;
+}
 const activeNow = () => retentionElapsed({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
 function checkpointClock() {
   store.retention = checkpointRetention({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
@@ -281,6 +337,7 @@ async function undo(entryId?: string) {
   return { count: entry.tabs.length - errors.length, errors };
 }
 async function action(message: any): Promise<any> {
+  message = validateMessage(message);
   await ready;
   store = prune(store, activeNow());
   if (message.type === 'snapshot') return snapshot();
@@ -385,4 +442,8 @@ async function action(message: any): Promise<any> {
   if (message.type === 'weatherSettings') { store.weather = message.weather; await save(); return true; }
   throw Error('Unknown action');
 }
-browser.runtime.onMessage.addListener((message: any) => action(message));
+browser.runtime.onMessage.addListener((message: any, sender: any) => {
+  const extensionRoot = browser.runtime.getURL('');
+  if (sender?.id !== browser.runtime.id || typeof sender?.url !== 'string' || !sender.url.startsWith(extensionRoot)) return Promise.reject(Error('Untrusted message sender'));
+  return action(message);
+});

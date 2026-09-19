@@ -15,6 +15,7 @@ test('session tabs restored after a week retain their records and last-access ti
   let persisted = { closed: records, usage: Object.fromEntries(urls.map(url => [url, { lastAccess: priorAccess, activations: 3, closedAt: priorAccess, closedAtActiveMs: 60_000 }])), collections: [], undo: [{ id: 'undo-1', kind: 'close', at: priorAccess, atActiveMs: 0, tabs: [] }], retention: { elapsedMs: 60_000, activeSince: priorAccess } };
   const sessionValues = new Map(tabs.map((tab, index) => [tab.id, { recordId: `record-${index}`, firstSeen: priorAccess - 1000 }]));
   let messageHandler;
+  let rawMessageHandler;
   const handlers = {};
   let createdWindow;
   let removedWindowId;
@@ -25,13 +26,14 @@ test('session tabs restored after a week retain their records and last-access ti
     windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { if (id === 1) return { id, type: 'normal', incognito: false, left: 100, top: 50, width: 1200, height: 900 }; if (id === 2) return { id, type: 'normal', incognito: true, left: 500, top: 200, width: 1000, height: 800 }; return createdWindow; }, async create(options) { createdWindow = { id: 99, type: 'popup', focused: true, ...options }; return createdWindow; }, async update() {}, async remove(id) { removedWindowId = id; }, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
     tabs: { async get(id) { return tabs.find(tab => tab.id === id); }, async query(query) { return tabs.filter(tab => tab.windowId === query.windowId && tab.active === query.active); }, async create(options) { const tab = { id: 40, windowId: options.windowId, index: tabs.length, url: options.url, title: 'Reopened video', active: !!options.active, status: 'complete', incognito: false, pinned: !!options.pinned }; tabs.push(tab); return tab; }, async update(id, changes) { Object.assign(tabs.find(tab => tab.id === id), changes); }, onCreated: event('tabCreated'), onRemoved: event('tabRemoved'), onUpdated: event('tabUpdated'), onAttached: event('tabAttached'), onMoved: event('tabMoved'), onActivated: event('activated') },
     sessions: { async getTabValue(id) { return sessionValues.get(id); }, async setTabValue(id, _key, value) { sessionValues.set(id, value); }, async getRecentlyClosed() { return []; } },
-    runtime: { getURL(path) { return `moz-extension://test/${path}`; }, onMessage: { addListener(handler) { messageHandler = handler; } } },
+    runtime: { id: 'test-extension', getURL(path) { return `moz-extension://test/${path}`; }, onMessage: { addListener(handler) { rawMessageHandler = handler; messageHandler = message => handler(message, { id: 'test-extension', url: 'moz-extension://test/popup.html' }); } } },
     extension: { async isAllowedIncognitoAccess() { return incognitoAllowed; } },
     action: { onClicked: event('action') }
   };
   class FixedDate extends Date { static now() { return clockTime; } }
   runInNewContext(readFileSync(new URL('../dist/background.js', import.meta.url), 'utf8'), { browser, crypto: webcrypto, structuredClone, Date: FixedDate, URL, Blob, console, setTimeout });
   const snapshot = await messageHandler({ type: 'snapshot' });
+  await assert.rejects(rawMessageHandler({ type: 'snapshot' }, { id: 'other-extension', url: 'moz-extension://other/page.html' }), /Untrusted message sender/);
   assert.equal(snapshot.tabs.length, 2);
   assert.deepEqual(snapshot.tabs.map(tab => tab.isLoaded), [true, true]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.lastAccess), [priorAccess, priorAccess]);

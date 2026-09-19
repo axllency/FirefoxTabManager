@@ -83,8 +83,8 @@ export function frequentSiteDisplayName(raw: string): string {
     const hostname = new URL(raw).hostname;
     if (!/^www\./i.test(hostname)) return hostname;
     const withoutWww = hostname.replace(/^www\./i, '');
-    const withoutTld = withoutWww.replace(/\.[^.]+$/, '');
-    return withoutTld ? withoutTld[0].toLocaleUpperCase() + withoutTld.slice(1) : withoutWww;
+    const display = withoutWww.replace(/\.com$/i, '');
+    return display ? display[0].toLocaleUpperCase() + display.slice(1) : withoutWww;
   } catch { return raw; }
 }
 export function firstSeenAgeLabel(firstSeen: number, currentTime = Date.now()): string | null {
