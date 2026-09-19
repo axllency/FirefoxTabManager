@@ -15,14 +15,12 @@ test('session tabs restored after a week retain their records and last-access ti
   let persisted = { open: records, closed: {}, usage: Object.fromEntries(urls.map(url => [url, { lastAccess: priorAccess, activations: 3, closedAt: priorAccess, closedAtActiveMs: 60_000 }])), collections: [], undo: [{ id: 'undo-1', kind: 'close', at: priorAccess, atActiveMs: 0, tabs: [] }], retention: { elapsedMs: 60_000, activeSince: priorAccess } };
   let messageHandler;
   let rawMessageHandler;
+  let popupOpenCount = 0;
   const handlers = {};
-  let createdWindow;
-  let removedWindowId;
-  let incognitoAllowed = true;
   const event = name => ({ addListener(handler) { handlers[name] = handler; } });
   const browser = {
     storage: { local: { async get() { return { state: persisted }; }, async set(value) { persisted = value.state; } }, session: { async get() { return {}; }, async set() {}, async remove() {} } },
-    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { if (id === 1) return { id, type: 'normal', incognito: false, left: 100, top: 50, width: 1200, height: 900 }; if (id === 2) return { id, type: 'normal', incognito: true, left: 500, top: 200, width: 1000, height: 800 }; return createdWindow; }, async create(options) { createdWindow = { id: 99, type: 'popup', focused: true, ...options }; return createdWindow; }, async update() {}, async remove(id) { removedWindowId = id; }, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
+    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { return { id, type: 'normal', incognito: false }; }, async create(options) { return { id: 99, type: 'normal', tabs: [], ...options }; }, async update() {}, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
     tabs: { async get(id) { return tabs.find(tab => tab.id === id); }, async query(query) { return tabs.filter(tab => tab.windowId === query.windowId && tab.active === query.active); }, async create(options) { const tab = { id: 40, windowId: options.windowId, index: tabs.length, url: options.url, title: 'Reopened video', active: !!options.active, status: 'complete', incognito: false, pinned: !!options.pinned }; tabs.push(tab); return tab; }, async update(id, changes) { Object.assign(tabs.find(tab => tab.id === id), changes); }, onCreated: event('tabCreated'), onRemoved: event('tabRemoved'), onUpdated: event('tabUpdated'), onAttached: event('tabAttached'), onMoved: event('tabMoved'), onActivated: event('activated') },
     runtime: { id: 'test-extension', getURL(path) { return `chrome-extension://test/${path}`; }, onMessage: { addListener(handler) {
       rawMessageHandler = handler;
@@ -31,12 +29,15 @@ test('session tabs restored after a week retain their records and last-access ti
         if (keepChannelOpen !== true && sender.id === 'test-extension') reject(Error('Message channel was not kept open'));
       });
     } } },
-    extension: { async isAllowedIncognitoAccess() { return incognitoAllowed; } },
-    action: { onClicked: event('action') }
+    commands: { onCommand: event('command') },
+    action: { async openPopup() { popupOpenCount++; } }
   };
   class FixedDate extends Date { static now() { return clockTime; } }
   runInNewContext(readFileSync(new URL('../dist/background.js', import.meta.url), 'utf8'), { chrome: browser, crypto: webcrypto, structuredClone, Date: FixedDate, URL, console, setTimeout });
   const snapshot = await messageHandler({ type: 'snapshot' });
+  handlers.command('open-tab-manager');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(popupOpenCount, 1, 'keyboard command opens the standard action popup');
   await assert.rejects(messageHandler({ type: 'snapshot' }, { id: 'other-extension', url: 'chrome-extension://other/page.html' }), /Untrusted message sender/);
   assert.equal(snapshot.tabs.length, 2);
   assert.deepEqual(snapshot.tabs.map(tab => tab.isLoaded), [true, true]);
@@ -60,34 +61,6 @@ test('session tabs restored after a week retain their records and last-access ti
   await new Promise(resolve => setImmediate(resolve));
   clockTime += 3 * 24 * 60 * 60 * 1000;
   assert.equal((await messageHandler({ type: 'snapshot' })).undo.length, 0, 'retention resumed after normal window opened');
-  handlers.action(tabs[0]);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [280, 140, 840, 720]);
-  assert.equal(createdWindow.incognito, true, 'selector requests a private browsing window');
-  handlers.focus(99);
-  await new Promise(resolve => setImmediate(resolve));
-  handlers.focus(-1);
-  await new Promise(resolve => setTimeout(resolve, 125));
-  assert.equal(removedWindowId, undefined, 'temporary focus loss inside the popup does not close it');
-  handlers.focus(1);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(removedWindowId, 99, 'selector closes after focus leaves it');
-  incognitoAllowed = false;
-  removedWindowId = undefined;
-  handlers.action(tabs[0]);
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(createdWindow.incognito, false, 'selector falls back to normal browsing without private access');
-  handlers.focus(99);
-  handlers.focus(1);
-  await new Promise(resolve => setImmediate(resolve));
-  incognitoAllowed = true;
-  handlers.action({ windowId: 2 });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(createdWindow.incognito, true, 'private source creates a private selector');
-  assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [650, 280, 700, 640], 'private source bounds position the selector');
-  handlers.focus(99);
-  handlers.focus(1);
-  await new Promise(resolve => setImmediate(resolve));
   const closing = tabs.shift();
   handlers.tabRemoved(closing.id);
   await new Promise(resolve => setImmediate(resolve));

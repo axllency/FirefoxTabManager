@@ -95,8 +95,15 @@ function layout() {
   $('#bulkGo').addEventListener('click', async () => { const value = ($('#bulk') as HTMLSelectElement).value; if (value) await bulk(value); else notice('Choose an action first.', 'action'); });
   $('#selectAll').addEventListener('click', () => { if (selected.size) selected.clear(); else filtered.forEach(t => selected.add(t.id)); renderTabs(); });
   $('#undo').addEventListener('click', () => run(async () => { const r = await send('undo'); notice(`Restored ${r.count} tab(s). ${r.errors.join(' ')}`); await refresh(); }));
-  if (page === 'popup') $('#dashboard').addEventListener('click', () => send('openDashboard'));
-  if (page === 'popup') $('#titleDashboard').addEventListener('click', () => send('openDashboard'));
+  const openDashboard = () => run(async () => {
+    const windows = (await browser.windows.getAll({ windowTypes: ['normal'] })).filter((win: any) => !win.incognito);
+    const target = windows.find((win: any) => win.focused) || windows[0];
+    if (target) await browser.tabs.create({ windowId: target.id, url: browser.runtime.getURL('dashboard.html'), active: true });
+    else await browser.windows.create({ url: browser.runtime.getURL('dashboard.html'), incognito: false });
+    window.close();
+  });
+  if (page === 'popup') $('#dashboard').addEventListener('click', openDashboard);
+  if (page === 'popup') $('#titleDashboard').addEventListener('click', openDashboard);
   $('#tabs').addEventListener('click', async e => {
     const target = e.target as HTMLElement;
     const sortButton = target.closest<HTMLButtonElement>('[data-sort]');

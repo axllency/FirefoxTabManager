@@ -24,15 +24,6 @@ export function checkpointRetention(retention: Store['retention'], currentTime: 
   return retention.activeSince === undefined ? retention : { elapsedMs: retentionElapsed(retention, currentTime), activeSince: currentTime };
 }
 
-export function selectorBounds(window: { left: number; top: number; width: number; height: number }) {
-  return {
-    left: Math.round(window.left + window.width * 0.15),
-    top: Math.round(window.top + window.height * 0.1),
-    width: Math.round(window.width * 0.7),
-    height: Math.round(window.height * 0.8)
-  };
-}
-
 export function urlKey(raw: string): string {
   try {
     const url = new URL(raw);

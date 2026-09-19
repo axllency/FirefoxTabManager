@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, sanitizeTabTitle, sanitizeTabUrl, retentionElapsed, checkpointRetention, selectorBounds, RETENTION_MS } from '../dist/core.mjs';
+import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, sanitizeTabTitle, sanitizeTabUrl, retentionElapsed, checkpointRetention, RETENTION_MS } from '../dist/core.mjs';
 
 test('URL keys strip only known tracking parameters', () => {
   assert.equal(urlKey('https://example.com/a?x=1&utm_source=mail&fbclid=abc#part'), 'https://example.com/a?x=1#part');
@@ -21,9 +21,6 @@ test('table URLs are compact and frequent sites collapse to root origins', () =>
   assert.equal(frequentSiteDisplayName('https://www.example.org/a'), 'Example.org');
   assert.equal(frequentSiteDisplayName('https://www.paypal.com.evil/a'), 'Paypal.com.evil');
   assert.equal(frequentSiteDisplayName('https://developer.mozilla.org/'), 'developer.mozilla.org');
-});
-test('selector uses 15 percent horizontal and 10 percent vertical insets', () => {
-  assert.deepEqual(selectorBounds({ left: 100, top: 50, width: 1200, height: 900 }), { left: 280, top: 140, width: 840, height: 720 });
 });
 test('URL list rejects unsafe and malformed lines', () => {
   const parsed = parseUrlFile('# comment\nhttps://example.com\n javascript:alert(1)\nnope\nhttp://mozilla.org');

@@ -1,4 +1,4 @@
-import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, selectorBounds, sanitizeTabTitle, sanitizeTabUrl, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
+import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, sanitizeTabTitle, sanitizeTabUrl, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
 declare const chrome: any;
 const browser = chrome;
 
@@ -11,15 +11,12 @@ let activeSince: number | undefined;
 let initializing = true;
 let initialFocusSeen = false;
 const initialActiveTabs = new Map<number, number>();
-let selectorWindowId: number | undefined;
-let selectorSourceWindowId: number | undefined;
-let selectorArmed = false;
 let writes = Promise.resolve();
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const eligible = (tab: any) => tab && !tab.incognito && tab.id >= 0 && !!tab.windowId;
 const sanitizeBrowserTab = (tab: any) => ({ ...tab, title: sanitizeTabTitle(tab?.title), url: sanitizeTabUrl(tab?.url) });
-const messageTypes = new Set(['snapshot', 'openDashboard', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move', 'weatherSettings']);
+const messageTypes = new Set(['snapshot', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move', 'weatherSettings']);
 const requireString = (value: unknown, label: string, max = 256) => {
   if (typeof value !== 'string' || !value || value.length > max) throw Error(`Invalid ${label}`);
   return value;
@@ -169,12 +166,8 @@ const ready = (async () => {
   store = { ...structuredClone(EMPTY_STORE), ...saved };
   store.preferences = { ...EMPTY_STORE.preferences, ...saved?.preferences };
   migrateRetention(saved);
-  const sessionState = await browser.storage.session.get(['ftmClockSession', 'ftmSelector']);
+  const sessionState = await browser.storage.session.get('ftmClockSession');
   const sameSession = sessionState.ftmClockSession === true;
-  if (sessionState.ftmSelector) {
-    const selector = await browser.windows.get(sessionState.ftmSelector.windowId).catch(() => null);
-    if (selector?.type === 'popup') { selectorWindowId = selector.id; selectorSourceWindowId = sessionState.ftmSelector.sourceWindowId; selectorArmed = true; }
-  }
   activeSince = sameSession ? store.retention.activeSince : undefined;
   const windows = await browser.windows.getAll({ populate: true, windowTypes: ['normal'] });
   for (const win of windows) if (!win.incognito) normalWindowIds.add(win.id);
@@ -210,20 +203,8 @@ browser.tabs.onActivated.addListener((info: any) => { if (initializing) return; 
   if (tab.status === 'complete') await markAccess(tab.id); else pendingAccess.add(tab.id);
 }); });
 browser.windows.onFocusChanged.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
-  if (selectorWindowId === windowId) selectorArmed = true;
-  else if (selectorWindowId !== undefined && selectorArmed) {
-    if (windowId === browser.windows.WINDOW_ID_NONE) {
-      const pendingSelectorId = selectorWindowId;
-      setTimeout(() => { void (async () => {
-        if (selectorWindowId !== pendingSelectorId || !selectorArmed) return;
-        const selector = await browser.windows.get(pendingSelectorId).catch(() => null);
-        if (!selector?.focused) await dismissSelector();
-      })(); }, 100);
-    } else await dismissSelector();
-  }
   if (!initialFocusSeen) { focusedWindowId = windowId; if (windowId !== browser.windows.WINDOW_ID_NONE) initialFocusSeen = true; return; }
   focusedWindowId = windowId;
-  if (selectorWindowId === windowId) return;
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
   const win = await browser.windows.get(windowId).catch(() => null);
   if (!win || win.type !== 'normal' || win.incognito) return;
@@ -238,51 +219,19 @@ browser.windows.onCreated.addListener((win: any) => { if (initializing) return; 
   await save();
 }); });
 browser.windows.onRemoved.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
-  if (windowId === selectorWindowId) {
-    selectorWindowId = undefined; selectorSourceWindowId = undefined; selectorArmed = false;
-    await browser.storage.session.remove('ftmSelector');
-    return;
-  }
-  if (windowId === selectorSourceWindowId) await dismissSelector();
   normalWindowIds.delete(windowId);
   if (!normalWindowIds.size && activeSince !== undefined) { checkpointClock(); activeSince = undefined; }
   await save();
 }); });
 
-async function dismissSelector() {
-  const windowId = selectorWindowId;
-  selectorWindowId = undefined; selectorSourceWindowId = undefined; selectorArmed = false;
-  await browser.storage.session.remove('ftmSelector');
-  if (windowId !== undefined) await browser.windows.remove(windowId).catch(() => {});
-}
-async function openSelector(tab: any) {
-  if (selectorWindowId !== undefined) {
-    const existing = await browser.windows.get(selectorWindowId).catch(() => null);
-    if (existing) { await browser.windows.update(existing.id, { focused: true }); return; }
-    await dismissSelector();
-  }
-  const source = tab?.windowId ? await browser.windows.get(tab.windowId) : await browser.windows.getLastFocused();
-  const incognito = await browser.extension.isAllowedIncognitoAccess().catch(() => false);
-  if ((source.type && source.type !== 'normal') || (source.incognito && !incognito) || ![source.left, source.top, source.width, source.height].every(Number.isFinite)) return;
-  const created = await browser.windows.create({
-    url: browser.runtime.getURL('popup.html'), type: 'popup', focused: true, incognito,
-    ...selectorBounds(source)
-  });
-  selectorWindowId = created.id; selectorSourceWindowId = source.id;
-  await browser.storage.session.set({ ftmSelector: { windowId: created.id, sourceWindowId: source.id } });
-  setTimeout(() => { void (async () => {
-    if (selectorWindowId !== created.id) return;
-    selectorArmed = true;
-    const win = await browser.windows.get(created.id).catch(() => null);
-    if (!win?.focused) await dismissSelector();
-  })(); }, 150);
-}
-browser.action.onClicked.addListener((tab: any) => { void ready.then(() => openSelector(tab)); });
+browser.commands.onCommand.addListener((command: string) => {
+  if (command === 'open-tab-manager') void browser.action.openPopup().catch(() => {});
+});
 
 async function snapshot() {
   const tabs = await normalTabs();
   await Promise.all(tabs.map((tab: any) => refreshTab(tab.id)));
-  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId: selectorSourceWindowId ?? focusedWindowId };
+  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId };
 }
 async function validateTabs(tabIds: number[]) {
   const results = await Promise.all([...new Set(tabIds)].map((tabId) => browser.tabs.get(tabId).catch(() => null)));
@@ -356,12 +305,6 @@ async function action(message: any): Promise<any> {
   await ready;
   store = prune(store, activeNow());
   if (message.type === 'snapshot') return snapshot();
-  if (message.type === 'openDashboard') {
-    const windowId = selectorSourceWindowId ?? focusedWindowId;
-    const tab = await browser.tabs.create({ windowId, url: browser.runtime.getURL('dashboard.html') });
-    await browser.windows.update(windowId, { focused: true });
-    return tab;
-  }
   if (message.type === 'focus') { const tab = await browser.tabs.get(message.tabId); if (!eligible(tab)) throw Error('Tab unavailable'); await browser.windows.update(tab.windowId, { focused: true }); return browser.tabs.update(tab.id, { active: true }); }
   if (message.type === 'undo') return undo(message.entryId);
   if (message.type === 'saveCollection') {
@@ -400,7 +343,7 @@ async function action(message: any): Promise<any> {
     const collection = store.collections.find(c => c.id === message.collectionId); if (!collection) throw Error('Collection not found');
     const items = message.url ? collection.tabs.filter(t => t.url === message.url).slice(0, 1) : collection.tabs;
     if (!items.length) return { count: 0 };
-    const currentWindowId = selectorSourceWindowId ?? focusedWindowId;
+    const currentWindowId = focusedWindowId;
     let created = !!message.newWindow || currentWindowId < 0;
     let winId = created ? (await browser.windows.create({ url: items[0].url })).id : currentWindowId;
     for (const item of items.slice(created ? 1 : 0)) await browser.tabs.create({ windowId: winId, url: item.url, active: false });
@@ -409,7 +352,7 @@ async function action(message: any): Promise<any> {
   let tabs = await validateTabs(message.tabIds || []);
   if (message.type === 'duplicates') {
     const all = (await snapshot()).tabs;
-    const duplicates = chooseDuplicateSurvivors(all, selectorSourceWindowId ?? focusedWindowId);
+    const duplicates = chooseDuplicateSurvivors(all, focusedWindowId);
     tabs = await validateTabs(duplicates);
     return doClose(tabs);
   }
