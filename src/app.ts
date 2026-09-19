@@ -2,7 +2,7 @@ import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabe
 declare const chrome: any;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
-const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
+const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
 const bulkActions = [
   ['close', 'Close'], ['discard', 'Unload'], ['saveCollection', 'Save collection'], ['saveClose', 'Save and close'],
   ['export', 'Export URLs'], ['move', 'Combine tabs'], ['duplicates', 'Close duplicates']
@@ -61,8 +61,7 @@ function applyColumnWidths() {
 function topBarControls() {
   return `<details class="top-dropdown"><summary>Collections</summary><div class="dropdown-panel collections-panel"><div class="row"><input id="importFile" type="file" accept=".txt,text/plain"><button id="import">Import URL list</button></div><div id="collections"></div></div></details>
     <details class="top-dropdown"><summary>Frequently visited</summary><div id="topSites" class="dropdown-panel"></div></details>
-    <div id="weatherSummary" class="weather-summary" role="status">Weather off</div>
-    <div class="dashboard-menu-wrap"><button id="dashboardMenuButton" aria-controls="dashboardMenu" aria-expanded="false">☰ Menu</button><div id="dashboardMenu" class="dashboard-menu hidden" role="region" aria-label="More tools"><div class="menu-commands"><button id="undo">Undo</button>${page === 'popup' ? '<button id="dashboard">Dashboard ↗</button>' : ''}</div><div class="display-settings"><button id="resetColumns">Reset column widths</button><label>Font size <select id="fontSize"><option value="12">Small</option><option value="14">Default</option><option value="16">Large</option><option value="18">Extra large</option></select></label></div><details class="settings-page"><summary>Settings</summary><section class="weather-widget"><h2>Weather settings</h2><div id="weather"></div></section><section><h2>Restore frequently visited</h2><div id="removedTopSites"></div></section></details></div></div>`;
+    <div class="dashboard-menu-wrap"><button id="dashboardMenuButton" aria-controls="dashboardMenu" aria-expanded="false">☰ Menu</button><div id="dashboardMenu" class="dashboard-menu hidden" role="region" aria-label="More tools"><div class="menu-commands"><button id="undo">Undo</button>${page === 'popup' ? '<button id="dashboard">Dashboard ↗</button>' : ''}</div><div class="display-settings"><button id="resetColumns">Reset column widths</button><label>Font size <select id="fontSize"><option value="12">Small</option><option value="14">Default</option><option value="16">Large</option><option value="18">Extra large</option></select></label></div><details class="settings-page"><summary>Settings</summary><section><h2>Restore frequently visited</h2><div id="removedTopSites"></div></section></details></div></div>`;
 }
 
 function layout() {
@@ -177,7 +176,7 @@ function layout() {
 function notice(message: string, source = 'general') { const status = $('#notice'); status.textContent = message; status.dataset.source = message ? source : ''; }
 async function run(fn: () => Promise<void>, source = 'general') { try { await fn(); } catch (e) { notice(String(e), source); } }
 async function activateTab(tabId: number) { await run(async () => { await send('focus', { tabId }); if (page === 'popup') window.close(); }); }
-async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); applyFontSize(); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
+async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); applyFontSize(); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); }
 function applyFontSize() {
   const size = [12, 14, 16, 18].includes(state.preferences?.fontSize) ? state.preferences.fontSize : 14;
   document.documentElement.style.fontSize = `${size}px`;
@@ -336,66 +335,6 @@ function renderTopSites() {
   const removed = topSites.filter(site => hidden.has(site.url));
   $('#removedTopSites').innerHTML = removed.length ? removed.map(site => `<div class="top-site">${tabIcon(site.favicon)}<span class="site-label">${esc(site.title)}</span><button data-restore-site="${esc(site.url)}">Restore</button></div>`).join('') : '<small>No removed sites.</small>';
 }
-function weatherCondition(code: number): { icon: string; label: string } {
-  if (code === 0) return { icon: '☀️', label: 'Clear' };
-  if (code <= 3) return { icon: '⛅', label: 'Cloudy' };
-  if (code === 45 || code === 48) return { icon: '🌫️', label: 'Fog' };
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return { icon: '❄️', label: 'Snow' };
-  if ([95, 96, 99].includes(code)) return { icon: '⛈️', label: 'Thunderstorm' };
-  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { icon: '🌧️', label: 'Rain' };
-  return { icon: '🌤️', label: 'Weather' };
-}
-const degrees = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)}°` : '—';
-async function renderWeather() {
-  const box = $('#weather');
-  const summary = $('#weatherSummary');
-  if (!state.weather?.enabled) { summary.textContent = 'Weather off'; delete summary.dataset.location; }
-  else if (!state.weather?.location) { summary.textContent = 'Choose city in Menu'; delete summary.dataset.location; }
-  else if (summary.dataset.location !== state.weather.location.name) summary.textContent = 'Loading weather…';
-  box.innerHTML = `<label><input type="checkbox" id="weatherEnabled" ${state.weather?.enabled ? 'checked' : ''}> Enable weather</label><div class="row"><input id="place" placeholder="City or postal code"><button id="findPlace">Find</button></div><div id="placeResults"></div><div id="conditions"></div><small>Weather by Open-Meteo. Your entered location is sent to its service.</small>`;
-  $('#weatherEnabled').addEventListener('change', e => run(async () => {
-    const enabled = (e.target as HTMLInputElement).checked;
-    state.weather = { ...state.weather, enabled }; await send('weatherSettings', { weather: state.weather });
-    if (enabled) await loadWeather(); else { summary.textContent = 'Weather off'; delete summary.dataset.location; $('#conditions').textContent = ''; }
-  }));
-  $('#findPlace').addEventListener('click', () => run(async () => {
-    if (!state.weather.enabled) throw Error('Enable weather first.');
-    const name = ($('#place') as HTMLInputElement).value.trim(); if (name.length < 2) throw Error('Enter a city or postal code.');
-    const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=8`);
-    if (!response.ok) throw Error('Location search failed.');
-    const data = await response.json();
-    $('#placeResults').innerHTML = (data.results || []).map((p: any, i: number) => `<button data-place="${i}">${esc([p.name,p.admin1,p.country].filter(Boolean).join(', '))}</button>`).join('') || 'No matching locations.';
-    $('#placeResults').querySelectorAll<HTMLElement>('[data-place]').forEach(button => button.addEventListener('click', () => run(async () => {
-      const p = data.results[Number(button.dataset.place)];
-      state.weather.location = { name: [p.name,p.admin1,p.country].filter(Boolean).join(', '), latitude: p.latitude, longitude: p.longitude };
-      await send('weatherSettings', { weather: state.weather }); $('#placeResults').textContent = ''; await loadWeather();
-    })));
-  }));
-}
-async function loadWeather() {
-  const summary = $('#weatherSummary');
-  const location = state.weather?.location;
-  if (!state.weather?.enabled || !location) { summary.textContent = state.weather?.enabled ? 'Choose city in Menu' : 'Weather off'; return; }
-  summary.textContent = 'Loading weather…';
-  try {
-    const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`);
-    if (!response.ok) throw Error('Weather is unavailable right now.');
-    const data = await response.json();
-    const condition = weatherCondition(data.current.weather_code);
-    const city = location.name.split(',')[0];
-    const current = degrees(data.current.temperature_2m);
-    const high = degrees(data.daily?.temperature_2m_max?.[0]);
-    const low = degrees(data.daily?.temperature_2m_min?.[0]);
-    summary.dataset.location = location.name;
-    summary.title = `${location.name} · ${condition.label}`;
-    summary.innerHTML = `<span class="weather-icon" role="img" aria-label="${esc(condition.label)}">${condition.icon}</span><span class="weather-city">${esc(city)}</span><strong>${current}</strong><span class="weather-range">H ${high} · L ${low}</span>`;
-    $('#conditions').textContent = `${location.name}: ${condition.label} · Current ${current}F · High ${high}F · Low ${low}F`;
-  } catch (error) {
-    summary.textContent = 'Weather unavailable';
-    $('#conditions').textContent = String(error);
-  }
-}
-
 layout();
 if (page === 'popup') document.addEventListener('keydown', event => { if (event.key === 'Escape' && !event.defaultPrevented) window.close(); });
-void run(async () => { await refresh(); if (state.weather?.enabled) await loadWeather(); ($('#query') as HTMLInputElement).focus(); });
+void run(async () => { await refresh(); ($('#query') as HTMLInputElement).focus(); });

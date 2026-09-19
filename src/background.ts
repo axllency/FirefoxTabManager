@@ -18,7 +18,7 @@ const sanitizeBrowserTab = (tab: any) => {
   const pendingUrl = sanitizeTabUrl(tab?.pendingUrl);
   return { ...tab, title: sanitizeTabTitle(tab?.title), url: (!url || url === 'about:blank') && pendingUrl ? pendingUrl : url, pendingUrl };
 };
-const messageTypes = new Set(['snapshot', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move', 'weatherSettings']);
+const messageTypes = new Set(['snapshot', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move']);
 const requireString = (value: unknown, label: string, max = 256) => {
   if (typeof value !== 'string' || !value || value.length > max) throw Error(`Invalid ${label}`);
   return value;
@@ -63,15 +63,6 @@ function validateMessage(input: unknown): any {
   if (message.type === 'recordActionUsage' && !['close', 'discard', 'saveCollection', 'saveClose', 'export', 'move', 'duplicates'].includes(message.action)) throw Error('Unknown action usage key');
   if (message.type === 'setFontSize' && ![12, 14, 16, 18].includes(message.fontSize)) throw Error('Unsupported font size');
   if (message.type === 'move' && message.tabIds.length === 0) throw Error('No tabs selected');
-  if (message.type === 'weatherSettings') {
-    const weather = message.weather;
-    if (!weather || typeof weather !== 'object' || typeof weather.enabled !== 'boolean') throw Error('Invalid weather settings');
-    if (weather.location !== undefined) {
-      const { name, latitude, longitude } = weather.location || {};
-      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw Error('Invalid weather location');
-      message.weather = { enabled: weather.enabled, location: { name: sanitizeTabTitle(requireString(name, 'weather location', 256)), latitude, longitude } };
-    } else message.weather = { enabled: weather.enabled };
-  }
   return message;
 }
 const activeNow = () => retentionElapsed({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
@@ -96,9 +87,10 @@ function migrateRetention(saved: any) {
   for (const usage of Object.values(store.usage)) if (usage.closedAt !== undefined) usage.closedAtActiveMs = 0;
   for (const entry of store.undo) entry.atActiveMs = 0;
 }
-function removeLegacyBrowserFields() {
+function removeLegacyFields() {
   const records = [...Object.values(store.open), ...Object.values(store.closed), ...store.undo.flatMap(entry => entry.tabs)];
   for (const record of records) delete (record as any).cookieStoreId;
+  delete (store as any).weather;
 }
 
 async function normalTabs(): Promise<any[]> {
@@ -182,7 +174,7 @@ const ready = (async () => {
   store = { ...structuredClone(EMPTY_STORE), ...saved };
   store.preferences = { ...EMPTY_STORE.preferences, ...saved?.preferences };
   migrateRetention(saved);
-  removeLegacyBrowserFields();
+  removeLegacyFields();
   const sessionState = await chrome.storage.session.get('ftmClockSession');
   const sameSession = sessionState.ftmClockSession === true;
   activeSince = sameSession ? store.retention.activeSince : undefined;
@@ -248,7 +240,7 @@ chrome.commands.onCommand.addListener((command: string) => {
 async function snapshot() {
   const tabs = await normalTabs();
   await Promise.all(tabs.map((tab: any) => refreshTab(tab.id)));
-  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId };
+  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, preferences: store.preferences, focusedWindowId };
 }
 async function validateTabs(tabIds: number[]) {
   const results = await Promise.all([...new Set(tabIds)].map((tabId) => chrome.tabs.get(tabId).catch(() => null)));
@@ -411,7 +403,6 @@ async function action(message: any): Promise<any> {
     if (count) { store.undo.unshift(entry); store.undo = store.undo.slice(0, 30); await save(); }
     return { count, errors };
   }
-  if (message.type === 'weatherSettings') { store.weather = message.weather; await save(); return true; }
   throw Error('Unknown action');
 }
 chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: any) => void) => {

@@ -48,12 +48,10 @@ Clicking a tab title activates that tab and focuses its browser window. Row menu
 - Frequently visited entries are reduced to root domains and use Chrome's favicon service.
 - Pin or hide frequently visited entries. Hidden entries can be restored under **Menu → Settings**.
 
-### Dashboard, weather, and display settings
+### Dashboard and display settings
 
 - Open the full dashboard by clicking the extension title or choosing **Dashboard** from the popup menu.
 - Open dashboards update when tabs are created, closed, or updated.
-- Optional weather accepts a city or postal code and displays current, high, and low temperatures while the interface is open.
-- Weather uses Open-Meteo and is disabled by default.
 - Font size and column-width controls are available under **Menu**.
 
 ### Undo and retention
@@ -114,8 +112,3 @@ An unpacked extension remains installed until removed, but it becomes unavailabl
 - Undo prefers Chromium's Sessions API. After restart, fallback URL reopening may lose navigation history, form data, tab groups, and exact window placement.
 - Chromium does not persist extension-defined values directly on tabs. The extension uses session and local storage plus exact-URL matching to reconnect records.
 - Unloading can fail for an active, already unloaded, or otherwise non-discardable tab.
-- Weather sends the entered location and selected coordinates to Open-Meteo. Network access is limited to the two Open-Meteo origins declared in the manifest.
-
-## Future work
-
-- Add automatic device-location weather with explicit opt-in. Manual city and postal-code weather is already available.
