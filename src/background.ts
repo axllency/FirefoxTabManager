@@ -1,4 +1,4 @@
-import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, selectorBounds, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
+import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, selectorBounds, sanitizeTabTitle, sanitizeTabUrl, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
 declare const browser: any;
 
 const live = new Map<number, TabRecord>();
@@ -17,6 +17,7 @@ let writes = Promise.resolve();
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const eligible = (tab: any) => tab && !tab.incognito && tab.id >= 0 && !!tab.windowId;
+const sanitizeBrowserTab = (tab: any) => ({ ...tab, title: sanitizeTabTitle(tab?.title), url: sanitizeTabUrl(tab?.url) });
 const activeNow = () => retentionElapsed({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
 function checkpointClock() {
   store.retention = checkpointRetention({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
@@ -33,9 +34,10 @@ function migrateRetention(saved: any) {
 
 async function normalTabs(): Promise<any[]> {
   const windows = await browser.windows.getAll({ populate: true, windowTypes: ['normal'] });
-  return windows.filter((w: any) => !w.incognito).flatMap((w: any) => w.tabs || []).filter(eligible);
+  return windows.filter((w: any) => !w.incognito).flatMap((w: any) => w.tabs || []).filter(eligible).map(sanitizeBrowserTab);
 }
 async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
+  tab = sanitizeBrowserTab(tab);
   if (live.has(tab.id)) return live.get(tab.id)!;
   let session: any;
   try { session = await browser.sessions.getTabValue(tab.id, 'ftmRecord'); } catch { /* fresh tab */ }
@@ -57,7 +59,7 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
 }
 async function refreshTab(tabId: number) {
   let tab: any;
-  try { tab = await browser.tabs.get(tabId); } catch { return; }
+  try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
   if (!eligible(tab)) return;
   const record = await makeRecord(tab);
   const oldKey = urlKey(record.url);
@@ -69,7 +71,7 @@ async function refreshTab(tabId: number) {
 }
 async function markAccess(tabId: number) {
   let tab: any;
-  try { tab = await browser.tabs.get(tabId); } catch { return; }
+  try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
   if (!eligible(tab) || !tab.active || tab.status !== 'complete' || tab.windowId !== focusedWindowId || !/^https?:/.test(tab.url || '')) return;
   const record = await makeRecord(tab);
   const key = urlKey(tab.url);
@@ -131,7 +133,8 @@ browser.tabs.onMoved.addListener((tabId: number) => { void ready.then(() => refr
 browser.tabs.onActivated.addListener((info: any) => { if (initializing) return; void ready.then(async () => {
   if (initialActiveTabs.get(info.windowId) === info.tabId) { initialActiveTabs.delete(info.windowId); return; }
   initialActiveTabs.delete(info.windowId);
-  const tab = await browser.tabs.get(info.tabId).catch(() => null);
+  const rawTab = await browser.tabs.get(info.tabId).catch(() => null);
+  const tab = rawTab ? sanitizeBrowserTab(rawTab) : null;
   if (!eligible(tab) || info.windowId !== focusedWindowId) return;
   if (tab.status === 'complete') await markAccess(tab.id); else pendingAccess.add(tab.id);
 }); });
@@ -212,7 +215,7 @@ async function snapshot() {
 }
 async function validateTabs(tabIds: number[]) {
   const results = await Promise.all([...new Set(tabIds)].map((tabId) => browser.tabs.get(tabId).catch(() => null)));
-  const tabs = results.filter(eligible);
+  const tabs = results.filter(eligible).map(sanitizeBrowserTab);
   await Promise.all(tabs.map((tab: any) => refreshTab(tab.id)));
   return tabs;
 }

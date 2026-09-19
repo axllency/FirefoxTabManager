@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, retentionElapsed, checkpointRetention, selectorBounds, RETENTION_MS } from '../dist/core.mjs';
+import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, sanitizeTabTitle, sanitizeTabUrl, retentionElapsed, checkpointRetention, selectorBounds, RETENTION_MS } from '../dist/core.mjs';
 
 test('URL keys strip only known tracking parameters', () => {
   assert.equal(urlKey('https://example.com/a?x=1&utm_source=mail&fbclid=abc#part'), 'https://example.com/a?x=1#part');
   assert.equal(urlKey('https://example.com/a?video=42'), 'https://example.com/a?video=42');
+});
+test('tab titles and URLs are sanitized at retrieval boundaries', () => {
+  assert.equal(sanitizeTabTitle('  Example\n\u202E title\u0000  '), 'Example title');
+  assert.equal(sanitizeTabUrl(' https://example.com/a\n\u202E?x=1 '), 'https://example.com/a?x=1');
+  assert.equal(sanitizeTabTitle('x'.repeat(5000)).length, 4096);
+  assert.equal(sanitizeTabUrl('https://example.com/' + 'x'.repeat(20000)).length, 16384);
 });
 test('table URLs are compact and frequent sites collapse to root origins', () => {
   assert.equal(displayUrl('https://www.example.com/a?q=1'), 'example.com/a?q=1');
@@ -133,7 +139,7 @@ test('sorting reverses each displayed field when direction toggles', () => {
   }
 });
 
-test('equal primary values sort by last active and then title', () => {
+test('non-title ties sort by last active descending and then title ascending', () => {
   const tabs = [
     { id: 1, title: 'Zulu', url: 'https://same', firstSeen: 1, windowId: 1, lastAccess: 5 },
     { id: 2, title: 'Beta', url: 'https://same', firstSeen: 1, windowId: 1, lastAccess: 10 },

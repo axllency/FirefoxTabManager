@@ -1,5 +1,13 @@
 export const RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const TRACKING = /^(utm_.+|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid)$/i;
+const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
+
+export function sanitizeTabTitle(value: unknown): string {
+  return String(value ?? '').replace(UNSAFE_TEXT, ' ').replace(/\s+/g, ' ').trim().slice(0, 4096);
+}
+export function sanitizeTabUrl(value: unknown): string {
+  return String(value ?? '').replace(UNSAFE_TEXT, '').replace(/\s/g, '').trim().slice(0, 16384);
+}
 
 export interface TabRecord { recordId: string; firstSeen: number; url: string; title: string; windowId: number; index: number; pinned: boolean; cookieStoreId?: string; closedAt?: number; closedAtActiveMs?: number; sessionId?: string }
 export interface UrlUsage { lastAccess?: number; activations: number; closedAt?: number; closedAtActiveMs?: number }
@@ -164,9 +172,12 @@ export function filterAndSortTabs<T extends { id: number; title?: string; url?: 
     else if (typeof av === 'boolean' && typeof bv === 'boolean') primary = direction === 'desc' ? Number(bv) - Number(av) : Number(av) - Number(bv);
     else primary = direction === 'desc' ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
     if (primary) return primary;
-    const lastActive = (b.lastAccess || 0) - (a.lastAccess || 0);
-    if (options.sort !== 'lastAccess' && lastActive) return lastActive;
-    const title = String(a.title || '').localeCompare(String(b.title || ''));
-    return title || a.id - b.id;
+    if (options.sort !== 'title') {
+      const lastActive = (b.lastAccess || 0) - (a.lastAccess || 0);
+      if (options.sort !== 'lastAccess' && lastActive) return lastActive;
+      const title = String(a.title || '').localeCompare(String(b.title || ''));
+      if (title) return title;
+    }
+    return a.id - b.id;
   });
 }

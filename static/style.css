@@ -18,6 +18,7 @@ button, select, input[type=search], input[type=date], input:not([type]) {
 }
 button:hover { border-color: var(--accent); }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); }
+.cell-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 header { position: relative; z-index: 10; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
 h1 { font-size: 16px; margin: 0; line-height: 1.2; }
 .title-button { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
@@ -60,8 +61,8 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 .resize-handle { position: absolute; z-index: 4; right: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
 .resize-handle:hover, .resize-handle:active { border-right: 2px solid var(--accent); }
 .tab-grid > :nth-child(n+2):nth-child(-n+7) { position: relative; align-self: stretch; min-width: 0; padding-right: 4px; border-right: 1px solid var(--line); }
-.tab-row.unloaded .cell-title, .tab-row.unloaded .cell-url { opacity: .5; }
-.tab-row.unloaded .cell-icon { filter: grayscale(1); opacity: .5; }
+.tab-row.unloaded .cell-title { opacity: .62; }
+.tab-row.unloaded .cell-url { opacity: .5; }
 .tab-row {
   min-height: 28px; padding-top: 2px; padding-bottom: 2px;
   border-bottom: 1px solid var(--line);

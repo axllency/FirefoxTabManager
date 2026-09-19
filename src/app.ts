@@ -67,6 +67,19 @@ function layout() {
   <section class="toolbar"><select id="loadFilter" aria-label="Filter by loaded state"><option value="all">All tabs</option><option value="loaded">Loaded tabs</option><option value="unloaded">Unloaded tabs</option></select><span id="count"></span><span id="notice" role="status"></span><span class="toolbar-spacer" aria-hidden="true"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option></select><button id="bulkGo">Go</button></section>
   <section id="tabs" class="tab-list" role="table" aria-label="Tab results"></section>`;
   $('#query').addEventListener('input', () => { selected.clear(); renderTabs(); });
+  $('#query').addEventListener('keydown', e => {
+    const event = e as KeyboardEvent;
+    if (event.key === 'Tab' && !event.shiftKey) {
+      const firstTitle = $('#tabs').querySelector<HTMLElement>('.cell-title');
+      if (firstTitle) { event.preventDefault(); firstTitle.focus(); }
+      return;
+    }
+    if (event.key !== 'Enter' || event.isComposing) return;
+    event.preventDefault();
+    const first = filtered[0];
+    if (!first) return notice('No matching tabs.');
+    void activateTab(first.id);
+  });
   $('#queryMode').addEventListener('input', () => { selected.clear(); renderTabs(); });
   $('#loadFilter').addEventListener('input', () => { selected.clear(); renderTabs(); });
   for (const selector of ['#ageMode','#agePeriod','#accessMode','#accessPeriod']) $(selector).addEventListener('input', renderTabs);
@@ -94,7 +107,21 @@ function layout() {
     if (target === row || target.closest('.cell-check')) return;
     if (target.matches('.more')) { row.querySelector('.row-menu')?.classList.toggle('hidden'); return; }
     if (target.matches('[data-action]')) { const action = target.dataset.action!; await bulk(action, [tabId]); return; }
-    await run(async () => { await send('focus', { tabId }); if (page === 'popup') window.close(); });
+    await activateTab(tabId);
+  });
+  $('#tabs').addEventListener('keydown', e => {
+    const title = (e.target as HTMLElement).closest<HTMLElement>('.cell-title');
+    if (!title) return;
+    const event = e as KeyboardEvent;
+    const row = title.closest<HTMLElement>('[data-tab-id]');
+    if (!row) return;
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); void activateTab(Number(row.dataset.tabId)); return; }
+    if (event.key !== 'Tab') return;
+    const titles = [...$('#tabs').querySelectorAll<HTMLElement>('.cell-title')];
+    const index = titles.indexOf(title);
+    const next = event.shiftKey ? titles[index - 1] : titles[index + 1];
+    if (next) { event.preventDefault(); next.focus(); }
+    else if (event.shiftKey && index === 0) { event.preventDefault(); ($('#query') as HTMLInputElement).focus(); }
   });
   $('#tabs').addEventListener('pointerdown', e => {
     const handle = (e.target as HTMLElement).closest<HTMLElement>('.resize-handle');
@@ -138,6 +165,7 @@ function layout() {
 }
 function notice(message: string, source = 'general') { const status = $('#notice'); status.textContent = message; status.dataset.source = message ? source : ''; }
 async function run(fn: () => Promise<void>, source = 'general') { try { await fn(); } catch (e) { notice(String(e), source); } }
+async function activateTab(tabId: number) { await run(async () => { await send('focus', { tabId }); if (page === 'popup') window.close(); }); }
 async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); applyFontSize(); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
 function applyFontSize() {
   const size = [12, 14, 16, 18].includes(state.preferences?.fontSize) ? state.preferences.fontSize : 14;
@@ -155,7 +183,7 @@ function renderActionOptions() {
   if (ordered.some(([value]) => value === current)) select.value = current;
 }
 function renderTabRow(t: any) {
-  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
+  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell" tabindex="0"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
 }
 function renderTabs() {
   const loadFilter = ($('#loadFilter') as HTMLSelectElement).value;
