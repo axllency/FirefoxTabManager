@@ -10,8 +10,8 @@ test('session tabs restored after a week retain their records and last-access ti
   let clockTime = currentTime;
   const priorAccess = currentTime - week;
   const urls = ['https://www.youtube.com/watch?v=one', 'https://www.youtube.com/watch?v=two'];
-  const tabs = urls.map((url, index) => ({ id: 11 + index, windowId: 1, index, url, title: `Video ${index}`, active: index === 0, status: 'complete', incognito: false, pinned: false }));
-  const records = Object.fromEntries(tabs.map((tab, index) => [`record-${index}`, { recordId: `record-${index}`, firstSeen: priorAccess - 1000, url: tab.url, title: tab.title, windowId: 1, index, pinned: false, closedAt: priorAccess, closedAtActiveMs: 60_000 }]));
+  const tabs = urls.map((url, index) => ({ id: 11 + index, windowId: 1, index, url: index ? 'about:blank' : url, pendingUrl: index ? url : undefined, title: `Video ${index}`, active: index === 0, status: 'complete', incognito: false, pinned: false, lastAccessed: priorAccess }));
+  const records = Object.fromEntries(tabs.map((tab, index) => [`record-${index}`, { recordId: `record-${index}`, firstSeen: priorAccess - 1000, url: urls[index], title: tab.title, windowId: 1, index, pinned: false, closedAt: priorAccess, closedAtActiveMs: 60_000 }]));
   let persisted = { open: records, closed: {}, usage: Object.fromEntries(urls.map(url => [url, { lastAccess: priorAccess, activations: 3, closedAt: priorAccess, closedAtActiveMs: 60_000 }])), collections: [], undo: [{ id: 'undo-1', kind: 'close', at: priorAccess, atActiveMs: 0, tabs: [] }], retention: { elapsedMs: 60_000, activeSince: priorAccess } };
   let messageHandler;
   let rawMessageHandler;
@@ -20,8 +20,8 @@ test('session tabs restored after a week retain their records and last-access ti
   const event = name => ({ addListener(handler) { handlers[name] = handler; } });
   const browser = {
     storage: { local: { async get() { return { state: persisted }; }, async set(value) { persisted = value.state; } }, session: { async get() { return {}; }, async set() {}, async remove() {} } },
-    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { return { id, type: 'normal', incognito: false }; }, async create(options) { return { id: 99, type: 'normal', tabs: [], ...options }; }, async update() {}, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
-    tabs: { async get(id) { return tabs.find(tab => tab.id === id); }, async query(query) { return tabs.filter(tab => tab.windowId === query.windowId && tab.active === query.active); }, async create(options) { const tab = { id: 40, windowId: options.windowId, index: tabs.length, url: options.url, title: 'Reopened video', active: !!options.active, status: 'complete', incognito: false, pinned: !!options.pinned }; tabs.push(tab); return tab; }, async update(id, changes) { Object.assign(tabs.find(tab => tab.id === id), changes); }, onCreated: event('tabCreated'), onRemoved: event('tabRemoved'), onUpdated: event('tabUpdated'), onAttached: event('tabAttached'), onMoved: event('tabMoved'), onActivated: event('activated') },
+    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, focused: true, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { return { id, type: 'normal', incognito: false, focused: id === 1 }; }, async create(options) { return { id: 99, type: 'normal', tabs: [], ...options }; }, async update() {}, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
+    tabs: { async get(id) { return tabs.find(tab => tab.id === id); }, async query(query) { return tabs.filter(tab => tab.windowId === query.windowId && tab.active === query.active); }, async create(options) { const tab = { id: 40, windowId: options.windowId, index: tabs.length, url: options.url, title: 'Reopened video', active: !!options.active, status: 'complete', incognito: false, pinned: !!options.pinned }; tabs.push(tab); return tab; }, async update(id, changes) { Object.assign(tabs.find(tab => tab.id === id), changes); }, async discard(id) { const tab = tabs.find(tab => tab.id === id); return tab ? { ...tab, discarded: true } : undefined; }, onCreated: event('tabCreated'), onRemoved: event('tabRemoved'), onUpdated: event('tabUpdated'), onAttached: event('tabAttached'), onMoved: event('tabMoved'), onActivated: event('activated') },
     runtime: { id: 'test-extension', getURL(path) { return `chrome-extension://test/${path}`; }, onMessage: { addListener(handler) {
       rawMessageHandler = handler;
       messageHandler = (message, sender = { id: 'test-extension', url: 'chrome-extension://test/popup.html' }) => new Promise((resolve, reject) => {
@@ -43,12 +43,15 @@ test('session tabs restored after a week retain their records and last-access ti
   assert.deepEqual(snapshot.tabs.map(tab => tab.isLoaded), [true, true]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.lastAccess), [priorAccess, priorAccess]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.firstSeen), [priorAccess - 1000, priorAccess - 1000]);
+  const discardResult = await messageHandler({ type: 'discard', tabIds: [12] });
+  assert.equal(discardResult.count, 1);
+  assert.equal(discardResult.errors.length, 0);
   assert.equal(Object.keys(persisted.closed).length, 0);
   assert.ok(persisted.retention.elapsedMs < 61_000, 'offline week did not count toward retention');
   handlers.focus(1);
   handlers.activated({ tabId: 11, windowId: 1 });
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(persisted.usage[urls[0]].lastAccess, priorAccess, 'startup focus did not count as a visit');
+  assert.equal(persisted.usage[urls[0]].lastAccess, currentTime, 'focusing a normal window records its loaded active tab');
   handlers.windowRemoved(1);
   await new Promise(resolve => setImmediate(resolve));
   const elapsedAtClose = persisted.retention.elapsedMs;
@@ -56,7 +59,7 @@ test('session tabs restored after a week retain their records and last-access ti
   const pausedSnapshot = await messageHandler({ type: 'snapshot' });
   assert.equal(persisted.retention.elapsedMs, elapsedAtClose);
   assert.equal(pausedSnapshot.undo.length, 1, 'undo retention paused with no normal window');
-  assert.equal(pausedSnapshot.tabs[0].lastAccess, priorAccess);
+  assert.equal(pausedSnapshot.tabs[0].lastAccess, currentTime, 'last-active timestamp remains fixed while Chrome is closed');
   handlers.windowCreated({ id: 2, type: 'normal', incognito: false });
   await new Promise(resolve => setImmediate(resolve));
   clockTime += 3 * 24 * 60 * 60 * 1000;
@@ -68,9 +71,13 @@ test('session tabs restored after a week retain their records and last-access ti
   assert.deepEqual(afterClose.tabs.map(tab => tab.id), [12], 'closed tabs leave the table snapshot');
   assert.equal('closedTabs' in afterClose, false);
   const opened = await browser.tabs.create({ windowId: 1, url: 'https://example.com/new', active: false });
+  opened.lastAccessed = priorAccess;
   handlers.tabCreated(opened);
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual((await messageHandler({ type: 'snapshot' })).tabs.map(tab => tab.id), [12, 40], 'new tabs enter the table snapshot');
+  const afterOpen = await messageHandler({ type: 'snapshot' });
+  assert.deepEqual(afterOpen.tabs.map(tab => tab.id), [12, 40], 'new tabs enter the table snapshot');
+  assert.equal(afterOpen.tabs.find(tab => tab.id === 40).lastAccess, priorAccess, 'Chrome lastAccessed seeds a new URL record');
+  assert.equal(afterOpen.tabs.find(tab => tab.id === 40).firstSeen, clockTime, 'native last access never replaces extension tab age');
   const collection = await messageHandler({ type: 'importCollection', name: 'Pinned set', urls: ['https://example.com/'] });
   await messageHandler({ type: 'pinCollection', collectionId: collection.id });
   await messageHandler({ type: 'topSitePreference', preference: 'hidden', url: 'https://example.com/', enabled: true });

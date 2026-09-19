@@ -9,13 +9,16 @@ let store: Store = structuredClone(EMPTY_STORE);
 let focusedWindowId = -1;
 let activeSince: number | undefined;
 let initializing = true;
-let initialFocusSeen = false;
 const initialActiveTabs = new Map<number, number>();
 let writes = Promise.resolve();
 const now = () => Date.now();
 const id = () => crypto.randomUUID();
 const eligible = (tab: any) => tab && !tab.incognito && tab.id >= 0 && !!tab.windowId;
-const sanitizeBrowserTab = (tab: any) => ({ ...tab, title: sanitizeTabTitle(tab?.title), url: sanitizeTabUrl(tab?.url) });
+const sanitizeBrowserTab = (tab: any) => {
+  const url = sanitizeTabUrl(tab?.url);
+  const pendingUrl = sanitizeTabUrl(tab?.pendingUrl);
+  return { ...tab, title: sanitizeTabTitle(tab?.title), url: (!url || url === 'about:blank') && pendingUrl ? pendingUrl : url, pendingUrl };
+};
 const messageTypes = new Set(['snapshot', 'focus', 'undo', 'saveCollection', 'importCollection', 'deleteCollection', 'pinCollection', 'topSitePreference', 'recordActionUsage', 'setFontSize', 'openCollection', 'duplicates', 'close', 'export', 'discard', 'move', 'weatherSettings']);
 const requireString = (value: unknown, label: string, max = 256) => {
   if (typeof value !== 'string' || !value || value.length > max) throw Error(`Invalid ${label}`);
@@ -110,6 +113,7 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
   const startupRecord = startup ? Object.values(store.open).find(record => record.url === tab.url && ![...live.values()].some(liveRecord => liveRecord.recordId === record.recordId)) : undefined;
   const reopenedRecord = !startup && tab.url && tab.url !== 'about:blank' ? Object.values(store.closed).filter(record => record.url === tab.url).sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0))[0] : undefined;
   const restored = closedRecord || openRecord || startupRecord || reopenedRecord;
+  const created = !restored;
   const record: TabRecord = restored ? { ...restored } : {
     recordId: startup && session?.recordId ? session.recordId : id(),
     firstSeen: startup && session?.firstSeen ? session.firstSeen : now(),
@@ -120,8 +124,12 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
   if (closedRecord || reopenedRecord) delete store.closed[record.recordId];
   const usage = store.usage[urlKey(record.url)];
   if (usage) { delete usage.closedAt; delete usage.closedAtActiveMs; }
+  const nativeLastAccess = Number(tab.lastAccessed);
+  if (/^https?:/.test(record.url) && Number.isFinite(nativeLastAccess) && nativeLastAccess > 0 && !usage?.lastAccess) {
+    store.usage[urlKey(record.url)] = { ...(usage || { activations: 0 }), lastAccess: nativeLastAccess };
+  }
   await setTabValue(tab.id, { recordId: record.recordId, firstSeen: record.firstSeen });
-  if (closedRecord || reopenedRecord) await save();
+  if (!startup && (created || closedRecord || reopenedRecord)) await save();
   return record;
 }
 async function refreshTab(tabId: number) {
@@ -129,17 +137,22 @@ async function refreshTab(tabId: number) {
   try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
   if (!eligible(tab)) return;
   const record = await makeRecord(tab);
+  const previous = { url: record.url, title: record.title, windowId: record.windowId, index: record.index, pinned: record.pinned };
   const oldKey = urlKey(record.url);
   const nextUrl = tab.url === 'about:blank' && record.url && record.url !== 'about:blank' ? record.url : tab.url || record.url;
   Object.assign(record, { url: nextUrl, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned, cookieStoreId: tab.cookieStoreId });
   const nextKey = urlKey(record.url);
   if (store.usage[nextKey]) { delete store.usage[nextKey].closedAt; delete store.usage[nextKey].closedAtActiveMs; }
-  if (oldKey !== nextKey && store.usage[oldKey] && ![...live.values()].some(r => urlKey(r.url) === oldKey)) { store.usage[oldKey].closedAt = now(); store.usage[oldKey].closedAtActiveMs = activeNow(); await save(); }
+  if (oldKey !== nextKey && store.usage[oldKey] && ![...live.values()].some(r => urlKey(r.url) === oldKey)) { store.usage[oldKey].closedAt = now(); store.usage[oldKey].closedAtActiveMs = activeNow(); }
+  if (previous.url !== record.url || previous.title !== record.title || previous.windowId !== record.windowId || previous.index !== record.index || previous.pinned !== record.pinned || oldKey !== nextKey) await save();
 }
 async function markAccess(tabId: number) {
   let tab: any;
   try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
-  if (!eligible(tab) || !tab.active || tab.status !== 'complete' || tab.windowId !== focusedWindowId || !/^https?:/.test(tab.url || '')) return;
+  if (!eligible(tab) || !tab.active || tab.status !== 'complete' || !/^https?:/.test(tab.url || '')) return;
+  const win = await browser.windows.get(tab.windowId).catch(() => null);
+  if (!win?.focused || win.type !== 'normal' || win.incognito) return;
+  focusedWindowId = tab.windowId;
   const record = await makeRecord(tab);
   const key = urlKey(tab.url);
   const usage = store.usage[key] || { activations: 0 };
@@ -199,11 +212,10 @@ browser.tabs.onActivated.addListener((info: any) => { if (initializing) return; 
   initialActiveTabs.delete(info.windowId);
   const rawTab = await browser.tabs.get(info.tabId).catch(() => null);
   const tab = rawTab ? sanitizeBrowserTab(rawTab) : null;
-  if (!eligible(tab) || info.windowId !== focusedWindowId) return;
+  if (!eligible(tab)) return;
   if (tab.status === 'complete') await markAccess(tab.id); else pendingAccess.add(tab.id);
 }); });
 browser.windows.onFocusChanged.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
-  if (!initialFocusSeen) { focusedWindowId = windowId; if (windowId !== browser.windows.WINDOW_ID_NONE) initialFocusSeen = true; return; }
   focusedWindowId = windowId;
   if (windowId === browser.windows.WINDOW_ID_NONE) return;
   const win = await browser.windows.get(windowId).catch(() => null);
@@ -375,9 +387,8 @@ async function action(message: any): Promise<any> {
   if (message.type === 'discard') {
     const errors: string[] = []; let count = 0;
     for (const tab of tabs) try {
-      await browser.tabs.discard(tab.id);
-      const discarded = await browser.tabs.get(tab.id);
-      if (!discarded.discarded) throw Error('Chromium did not mark the tab as unloaded.');
+      const discarded = await browser.tabs.discard(tab.id);
+      if (!discarded?.discarded) throw Error('Tab is active, already unloaded, or could not be unloaded.');
       count++;
     } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
     return { count, errors };
