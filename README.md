@@ -2,12 +2,34 @@
 
 A Firefox 142+ desktop extension for finding and managing tabs across windows. Browsing records and collections stay in extension local storage. Private tabs are excluded even when Firefox permits the selector popup to open in a private window.
 
-## Build and try it
+## Reproduce the build
 
-1. Install Node.js 20 or later and run `npm install`.
-2. Run `npm run check`, `npm test`, and `npm run lint`.
-3. In Firefox, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/manifest.json`.
-4. Click the toolbar button or use Alt+Shift+A. Firefox's **Manage Extension Shortcuts** can change the shortcut. The selector opens in a separate popup window, inset 15% horizontally and 10% vertically from the active Firefox window. It closes when focus moves outside or when you press Escape. Open the dashboard from the popup.
+The checked-in extension source is under `src/` and `static/`. The build uses esbuild to compile and bundle TypeScript, generate source maps, and copy the static extension files into a fresh `dist/` directory. Output is not minified. No HTML or CSS template engine is used.
+
+Prerequisites:
+
+- Node.js 20 or later
+- Corepack, which is included with supported Node.js releases
+
+From the repository root, run:
+
+```sh
+corepack enable
+corepack prepare pnpm@11.19.0 --activate
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm run check
+pnpm test
+pnpm run lint
+```
+
+`pnpm run build` deletes any existing `dist/` directory before producing the reviewer-loadable extension. `pnpm test` and `pnpm run lint` also rebuild `dist/`; the final `dist/manifest.json` can be loaded directly in Firefox.
+
+## Try it in Firefox
+
+1. Complete the reproducible build steps above.
+2. Open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/manifest.json`.
+3. Click the toolbar button or use Alt+Shift+A. Firefox's **Manage Extension Shortcuts** can change the shortcut. The selector opens in a separate popup window, inset 15% horizontally and 10% vertically from the active Firefox window. It closes when focus moves outside or when you press Escape. Open the dashboard from the popup.
 
 Enabling Firefox's **Let this extension work in Private Windows** setting lets Advanced Tab Manager open its popup in a private window instead of a regular window, which prevents that popup from returning when tabs are restored with Firefox's **Reopen Closed Tab** feature. It also lets you activate the popup from any private window. Private tabs still never appear in Advanced Tab Manager or enter its stored tab data.
 
