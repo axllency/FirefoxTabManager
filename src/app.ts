@@ -19,7 +19,14 @@ try {
   const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
   if (Array.isArray(saved) && saved.length === 8 && saved.every((width, i) => Number.isFinite(width) && width >= minColumnWidths[i] && width <= 2000)) columnWidths = saved;
 } catch { /* Ignore invalid saved layout. */ }
-const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+const node = <K extends keyof HTMLElementTagNameMap>(tag: K, options: { className?: string; text?: string; attrs?: Record<string, string>; data?: Record<string, string> } = {}) => {
+  const element = document.createElement(tag);
+  if (options.className) element.className = options.className;
+  if (options.text !== undefined) element.textContent = options.text;
+  for (const [name, value] of Object.entries(options.attrs || {})) element.setAttribute(name, value);
+  for (const [name, value] of Object.entries(options.data || {})) element.dataset[name] = value;
+  return element;
+};
 const send = (type: string, data: any = {}) => browser.runtime.sendMessage({ type, ...data });
 const when = (time?: number) => time ? new Date(time).toLocaleString() : 'Never recorded';
 const shortDate = (time?: number) => time ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: '2-digit' }).format(time) : '—';
@@ -41,9 +48,26 @@ const favicon = (url?: string) => {
 };
 const tabIcon = (url?: string) => {
   const src = favicon(url);
-  return `<span class="site-icon" aria-hidden="true"><span class="site-icon-fallback">◉</span>${src ? `<img class="tab-favicon" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ''}</span>`;
+  const wrapper = node('span', { className: 'site-icon', attrs: { 'aria-hidden': 'true' } });
+  wrapper.append(node('span', { className: 'site-icon-fallback', text: '◉' }));
+  if (src) {
+    const image = node('img', { className: 'tab-favicon', attrs: { alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' } });
+    image.src = src;
+    wrapper.append(image);
+  }
+  return wrapper;
 };
-const heading = (label: string, field: string | undefined, index: number) => `<span class="column-heading" role="columnheader"${field ? ` aria-sort="${currentSort === field ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}"` : ''}>${field ? `<button class="sort-header" data-sort="${field}" title="Sort by ${label}">${label}<span class="sort-arrow" aria-hidden="true">${currentSort === field ? sortDirection === 'asc' ? '▲' : '▼' : ''}</span></button>` : label}${index > 0 && index < minColumnWidths.length - 1 ? `<span class="resize-handle" data-column="${index}" role="separator" aria-label="Resize ${label} column" title="Drag to resize column"></span>` : ''}</span>`;
+const heading = (label: string, field: string | undefined, index: number) => {
+  const cell = node('span', { className: 'column-heading', attrs: { role: 'columnheader' } });
+  if (field) {
+    cell.setAttribute('aria-sort', currentSort === field ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none');
+    const button = node('button', { className: 'sort-header', text: label, attrs: { title: `Sort by ${label}` }, data: { sort: field } });
+    button.append(node('span', { className: 'sort-arrow', text: currentSort === field ? sortDirection === 'asc' ? '▲' : '▼' : '', attrs: { 'aria-hidden': 'true' } }));
+    cell.append(button);
+  } else cell.textContent = label;
+  if (index > 0 && index < minColumnWidths.length - 1) cell.append(node('span', { className: 'resize-handle', attrs: { role: 'separator', 'aria-label': `Resize ${label} column`, title: 'Drag to resize column' }, data: { column: String(index) } }));
+  return cell;
+};
 function applyColumnWidths() {
   const list = $('#tabs');
   if (!columnWidths) return;
@@ -54,18 +78,9 @@ function applyColumnWidths() {
   columnWidths = fitColumnWidths(columnWidths, minColumnWidths, available);
   list.style.setProperty('--tab-columns', columnWidths.map(width => `${width.toFixed(2)}px`).join(' '));
 }
-function topBarControls() {
-  return `<details class="top-dropdown"><summary>Collections</summary><div class="dropdown-panel collections-panel"><div class="row"><input id="importFile" type="file" accept=".txt,text/plain"><button id="import">Import URL list</button></div><div id="collections"></div></div></details>
-    <details class="top-dropdown"><summary>Frequently visited</summary><div id="topSites" class="dropdown-panel"></div></details>
-    <div id="weatherSummary" class="weather-summary" role="status">Weather off</div>
-    <div class="dashboard-menu-wrap"><button id="dashboardMenuButton" aria-controls="dashboardMenu" aria-expanded="false">☰ Menu</button><div id="dashboardMenu" class="dashboard-menu hidden" role="region" aria-label="More tools"><div class="menu-commands"><button id="undo">Undo</button>${page === 'popup' ? '<button id="dashboard">Dashboard ↗</button>' : ''}</div><div class="display-settings"><button id="resetColumns">Reset column widths</button><label>Font size <select id="fontSize"><option value="12">Small</option><option value="14">Default</option><option value="16">Large</option><option value="18">Extra large</option></select></label></div><details class="settings-page"><summary>Settings</summary><section class="weather-widget"><h2>Weather settings</h2><div id="weather"></div></section><section><h2>Restore frequently visited</h2><div id="removedTopSites"></div></section></details></div></div>`;
-}
-
 function layout() {
-  $('#app').innerHTML = `<header><div class="header-title"><button id="titleDashboard" class="title-button"><h1>Advanced Tab Manager</h1><small>${page === 'popup' ? 'Find tabs across windows' : 'Your tab workspace'}</small></button></div><div class="header-actions">${topBarControls()}</div></header>
-  <section class="search"><div class="search-line"><select id="queryMode" aria-label="Search logical operator"><option value="is">Is</option><option value="not">Not</option></select><input id="query" type="search" placeholder="Search title, URL, or window:#" aria-label="Find tabs" autofocus><div class="filter-stack"><div><label>First seen <select id="ageMode"><option value="any">Any age</option><option value="older">Older than</option><option value="newer">Younger than</option></select></label><select id="agePeriod" aria-label="First seen age period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div><div><label>Last active <select id="accessMode"><option value="any">Any time</option><option value="within">Within</option><option value="before">Before</option></select></label><select id="accessPeriod" aria-label="Last active period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div></div></div></section>
-  <section class="toolbar"><select id="loadFilter" aria-label="Filter by loaded state"><option value="all">All tabs</option><option value="loaded">Loaded tabs</option><option value="unloaded">Unloaded tabs</option></select><span id="count"></span><span id="notice" role="status"></span><span class="toolbar-spacer" aria-hidden="true"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option></select><button id="bulkGo">Go</button></section>
-  <section id="tabs" class="tab-list" role="table" aria-label="Tab results"></section>`;
+  $('#pageSubtitle').textContent = page === 'popup' ? 'Find tabs across windows' : 'Your tab workspace';
+  if (page !== 'popup') $('#dashboard').remove();
   $('#query').addEventListener('input', () => { selected.clear(); renderTabs(); });
   $('#query').addEventListener('keydown', e => {
     const event = e as KeyboardEvent;
@@ -182,11 +197,31 @@ function renderActionOptions() {
   const usage = state.preferences?.actionUsage || {};
   const useCount = (action: string) => (usage[action] || 0) + (action === 'export' ? usage.exportClose || 0 : 0);
   const ordered = [...bulkActions].sort((a, b) => useCount(b[0]) - useCount(a[0]) || bulkActions.findIndex(item => item[0] === a[0]) - bulkActions.findIndex(item => item[0] === b[0]));
-  select.innerHTML = `<option value="">Actions…</option>${ordered.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}`;
+  select.replaceChildren(node('option', { text: 'Actions…', attrs: { value: '' } }), ...ordered.map(([value, label]) => node('option', { text: label, attrs: { value } })));
   if (ordered.some(([value]) => value === current)) select.value = current;
 }
 function renderTabRow(t: any) {
-  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell" tabindex="0"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
+  const row = node('article', { className: `tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}`, attrs: { role: 'row', title: String(t.url || '') }, data: { tabId: String(t.id) } });
+  const checkCell = node('span', { className: 'cell-check', attrs: { role: 'cell' } });
+  const checkbox = node('input', { attrs: { type: 'checkbox', 'aria-label': `Select ${t.title || ''}` } });
+  checkbox.checked = selected.has(t.id);
+  checkCell.append(checkbox);
+  const iconCell = node('span', { className: 'cell-icon', attrs: { role: 'cell' } });
+  iconCell.append(tabIcon(t.favIconUrl));
+  const title = node('strong', { className: 'cell-title', attrs: { role: 'cell', tabindex: '0' } });
+  title.append(node('span', { className: 'title-text', text: t.title || t.url || 'Untitled tab' }));
+  for (const [show, label, symbol] of [[t.pinned, 'Pinned', '●'], [t.audible, 'Audible', '♪'], [t.mutedInfo?.muted, 'Muted', '×'], [t.discarded, 'Unloaded', '○']] as const) {
+    if (show) title.append(node('span', { className: 'flag', text: symbol, attrs: { 'aria-label': label } }));
+  }
+  const menu = node('div', { className: 'row-menu hidden' });
+  for (const [action, label] of [['saveCollection', 'Save'], ['discard', 'Unload'], ['close', 'Close']]) menu.append(node('button', { text: label, data: { action } }));
+  row.append(checkCell, iconCell, title,
+    node('span', { className: 'cell-url', text: displayUrl(t.url), attrs: { role: 'cell' } }),
+    node('span', { className: 'cell-date', text: firstSeenDisplay(t.firstSeen), attrs: { role: 'cell' } }),
+    node('span', { className: 'cell-date', text: lastActive(t.lastAccess), attrs: { role: 'cell' } }),
+    node('span', { className: 'cell-center', text: String(t.windowId), attrs: { role: 'cell' } }),
+    node('button', { className: 'more', text: '⋮', attrs: { 'aria-label': 'Tab actions' } }), menu);
+  return row;
 }
 function renderTabs() {
   const loadFilter = ($('#loadFilter') as HTMLSelectElement).value;
@@ -206,7 +241,9 @@ function renderTabs() {
   selectionButton.textContent = selected.size ? 'Clear selection' : 'Select results';
   selectionButton.disabled = !selected.size && !filtered.length;
   ($('#bulkGo') as HTMLButtonElement).disabled = selected.size === 0;
-  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('URL', 'url', 3)}${heading('Age', 'firstSeen', 4)}${heading('Last active', 'lastAccess', 5)}${heading('Window', 'windowId', 6)}${heading('', undefined, 7)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
+  const header = node('div', { className: 'tab-grid tab-heading', attrs: { role: 'row' } });
+  header.append(heading('', undefined, 0), heading('', undefined, 1), heading('Title', 'title', 2), heading('URL', 'url', 3), heading('Age', 'firstSeen', 4), heading('Last active', 'lastAccess', 5), heading('Window', 'windowId', 6), heading('', undefined, 7));
+  $('#tabs').replaceChildren(header, ...(filtered.length ? filtered.map(renderTabRow) : [node('p', { className: 'empty', text: 'No matching tabs' })]));
   applyColumnWidths();
 }
 async function bulk(action: string, override?: number[]) {
@@ -318,14 +355,48 @@ function initTopBar() {
 }
 function renderCollections() {
   const collections = [...state.collections].sort((a: any, b: any) => Number(!!b.pinned) - Number(!!a.pinned) || b.createdAt - a.createdAt);
-  $('#collections').innerHTML = collections.length ? collections.map((c: any) => `<div class="collection"><div class="item-heading"><strong>${esc(c.name)}</strong><span class="item-icons"><button data-collection-action="pin" data-collection-id="${c.id}" title="${c.pinned ? 'Unpin' : 'Pin'} collection" aria-label="${c.pinned ? 'Unpin' : 'Pin'} ${esc(c.name)}">${c.pinned ? '📌' : '📍'}</button><button data-collection-action="delete" data-collection-id="${c.id}" title="Delete collection" aria-label="Delete ${esc(c.name)}">🗑️</button></span></div><small>${c.tabs.length} URLs · ${esc(when(c.createdAt))}</small><div class="row"><button data-collection-action="current" data-collection-id="${c.id}">Open all here</button><button data-collection-action="new" data-collection-id="${c.id}">Open in new window</button></div><details><summary>URLs</summary>${c.tabs.map((t: any) => `<div class="collection-url"><button data-collection-action="current" data-collection-id="${c.id}" data-url="${esc(t.url)}">Open</button><span>${esc(t.title)}</span></div>`).join('')}</details></div>`).join('') : '<p>No collections saved yet.</p>';
+  if (!collections.length) { $('#collections').replaceChildren(node('p', { text: 'No collections saved yet.' })); return; }
+  $('#collections').replaceChildren(...collections.map((c: any) => {
+    const container = node('div', { className: 'collection' });
+    const itemHeading = node('div', { className: 'item-heading' });
+    const icons = node('span', { className: 'item-icons' });
+    const pinLabel = c.pinned ? 'Unpin' : 'Pin';
+    icons.append(
+      node('button', { text: c.pinned ? '📌' : '📍', attrs: { title: `${pinLabel} collection`, 'aria-label': `${pinLabel} ${c.name}` }, data: { collectionAction: 'pin', collectionId: String(c.id) } }),
+      node('button', { text: '🗑️', attrs: { title: 'Delete collection', 'aria-label': `Delete ${c.name}` }, data: { collectionAction: 'delete', collectionId: String(c.id) } })
+    );
+    itemHeading.append(node('strong', { text: c.name }), icons);
+    const actions = node('div', { className: 'row' });
+    actions.append(node('button', { text: 'Open all here', data: { collectionAction: 'current', collectionId: String(c.id) } }), node('button', { text: 'Open in new window', data: { collectionAction: 'new', collectionId: String(c.id) } }));
+    const details = node('details');
+    details.append(node('summary', { text: 'URLs' }));
+    for (const tab of c.tabs) {
+      const entry = node('div', { className: 'collection-url' });
+      entry.append(node('button', { text: 'Open', data: { collectionAction: 'current', collectionId: String(c.id), url: String(tab.url) } }), node('span', { text: tab.title }));
+      details.append(entry);
+    }
+    container.append(itemHeading, node('small', { text: `${c.tabs.length} URLs · ${when(c.createdAt)}` }), actions, details);
+    return container;
+  }));
 }
 function renderTopSites() {
   const hidden = new Set(state.preferences?.hiddenTopSites || []), pinned = new Set(state.preferences?.pinnedTopSites || []);
   const visible = topSites.filter(site => !hidden.has(site.url)).sort((a, b) => Number(pinned.has(b.url)) - Number(pinned.has(a.url)) || a.title.localeCompare(b.title)).slice(0, 12);
-  $('#topSites').innerHTML = visible.length ? visible.map(site => `<div class="top-site">${tabIcon(site.favicon)}<a href="${esc(site.url)}" title="${esc(site.url)}" target="_blank" rel="noopener noreferrer">${esc(site.title)}</a><span class="item-icons"><button data-site-action="pin" data-url="${esc(site.url)}" title="${pinned.has(site.url) ? 'Unpin' : 'Pin'} site" aria-label="${pinned.has(site.url) ? 'Unpin' : 'Pin'} ${esc(site.title)}">${pinned.has(site.url) ? '📌' : '📍'}</button><button data-site-action="delete" data-url="${esc(site.url)}" title="Remove site" aria-label="Remove ${esc(site.title)}">🗑️</button></span></div>`).join('') : '<p>No frequent sites available.</p>';
+  $('#topSites').replaceChildren(...(visible.length ? visible.map(site => {
+    const entry = node('div', { className: 'top-site' });
+    const link = node('a', { text: site.title, attrs: { href: site.url, title: site.url, target: '_blank', rel: 'noopener noreferrer' } });
+    const icons = node('span', { className: 'item-icons' });
+    const pinLabel = pinned.has(site.url) ? 'Unpin' : 'Pin';
+    icons.append(node('button', { text: pinned.has(site.url) ? '📌' : '📍', attrs: { title: `${pinLabel} site`, 'aria-label': `${pinLabel} ${site.title}` }, data: { siteAction: 'pin', url: site.url } }), node('button', { text: '🗑️', attrs: { title: 'Remove site', 'aria-label': `Remove ${site.title}` }, data: { siteAction: 'delete', url: site.url } }));
+    entry.append(tabIcon(site.favicon), link, icons);
+    return entry;
+  }) : [node('p', { text: 'No frequent sites available.' })]));
   const removed = topSites.filter(site => hidden.has(site.url));
-  $('#removedTopSites').innerHTML = removed.length ? removed.map(site => `<div class="top-site">${tabIcon(site.favicon)}<span class="site-label">${esc(site.title)}</span><button data-restore-site="${esc(site.url)}">Restore</button></div>`).join('') : '<small>No removed sites.</small>';
+  $('#removedTopSites').replaceChildren(...(removed.length ? removed.map(site => {
+    const entry = node('div', { className: 'top-site' });
+    entry.append(tabIcon(site.favicon), node('span', { className: 'site-label', text: site.title }), node('button', { text: 'Restore', data: { restoreSite: site.url } }));
+    return entry;
+  }) : [node('small', { text: 'No removed sites.' })]));
 }
 function weatherCondition(code: number): { icon: string; label: string } {
   if (code === 0) return { icon: '☀️', label: 'Clear' };
@@ -343,7 +414,13 @@ async function renderWeather() {
   if (!state.weather?.enabled) { summary.textContent = 'Weather off'; delete summary.dataset.location; }
   else if (!state.weather?.location) { summary.textContent = 'Choose city in Menu'; delete summary.dataset.location; }
   else if (summary.dataset.location !== state.weather.location.name) summary.textContent = 'Loading weather…';
-  box.innerHTML = `<label><input type="checkbox" id="weatherEnabled" ${state.weather?.enabled ? 'checked' : ''}> Enable weather</label><div class="row"><input id="place" placeholder="City or postal code"><button id="findPlace">Find</button></div><div id="placeResults"></div><div id="conditions"></div><small>Weather by Open-Meteo. Your entered location is sent to its service.</small>`;
+  const enabledLabel = node('label');
+  const enabledInput = node('input', { attrs: { type: 'checkbox', id: 'weatherEnabled' } });
+  enabledInput.checked = !!state.weather?.enabled;
+  enabledLabel.append(enabledInput, document.createTextNode(' Enable weather'));
+  const searchRow = node('div', { className: 'row' });
+  searchRow.append(node('input', { attrs: { id: 'place', placeholder: 'City or postal code' } }), node('button', { text: 'Find', attrs: { id: 'findPlace' } }));
+  box.replaceChildren(enabledLabel, searchRow, node('div', { attrs: { id: 'placeResults' } }), node('div', { attrs: { id: 'conditions' } }), node('small', { text: 'Weather by Open-Meteo. Your entered location is sent to its service.' }));
   $('#weatherEnabled').addEventListener('change', e => run(async () => {
     const enabled = (e.target as HTMLInputElement).checked;
     if (enabled) {
@@ -360,7 +437,9 @@ async function renderWeather() {
     const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=8`);
     if (!response.ok) throw Error('Location search failed.');
     const data = await response.json();
-    $('#placeResults').innerHTML = (data.results || []).map((p: any, i: number) => `<button data-place="${i}">${esc([p.name,p.admin1,p.country].filter(Boolean).join(', '))}</button>`).join('') || 'No matching locations.';
+    const results = $('#placeResults');
+    const places = Array.isArray(data.results) ? data.results : [];
+    results.replaceChildren(...(places.length ? places.map((p: any, i: number) => node('button', { text: [p.name, p.admin1, p.country].filter(Boolean).join(', '), data: { place: String(i) } })) : [document.createTextNode('No matching locations.')]));
     $('#placeResults').querySelectorAll<HTMLElement>('[data-place]').forEach(button => button.addEventListener('click', () => run(async () => {
       const p = data.results[Number(button.dataset.place)];
       state.weather.location = { name: [p.name,p.admin1,p.country].filter(Boolean).join(', '), latitude: p.latitude, longitude: p.longitude };
@@ -385,7 +464,12 @@ async function loadWeather() {
     const low = degrees(data.daily?.temperature_2m_min?.[0]);
     summary.dataset.location = location.name;
     summary.title = `${location.name} · ${condition.label}`;
-    summary.innerHTML = `<span class="weather-icon" role="img" aria-label="${esc(condition.label)}">${condition.icon}</span><span class="weather-city">${esc(city)}</span><strong>${current}</strong><span class="weather-range">H ${high} · L ${low}</span>`;
+    summary.replaceChildren(
+      node('span', { className: 'weather-icon', text: condition.icon, attrs: { role: 'img', 'aria-label': condition.label } }),
+      node('span', { className: 'weather-city', text: city }),
+      node('strong', { text: current }),
+      node('span', { className: 'weather-range', text: `H ${high} · L ${low}` })
+    );
     $('#conditions').textContent = `${location.name}: ${condition.label} · Current ${current}F · High ${high}F · Low ${low}F`;
   } catch (error) {
     summary.textContent = 'Weather unavailable';
