@@ -25,6 +25,19 @@ pnpm run lint
 
 `pnpm run build` deletes any existing `dist/` directory before producing the reviewer-loadable extension. `pnpm test` and `pnpm run lint` also rebuild `dist/`; the final `dist/manifest.json` can be loaded directly in Firefox.
 
+### Current verified build environment
+
+The current `dist/` output was built and verified with:
+
+- Windows 11 23H2, build 22631, x64
+- Node.js 24.19.0
+- pnpm 11.19.0
+- esbuild 0.25.12
+- TypeScript 5.9.3
+- web-ext 10.6.0
+
+Dependency versions are resolved by `pnpm-lock.yaml`. Node.js 20 remains the minimum supported build version because the generated core test module targets Node.js 20.
+
 ## Try it in Firefox
 
 1. Complete the reproducible build steps above.
