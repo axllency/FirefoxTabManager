@@ -137,7 +137,16 @@ browser.tabs.onActivated.addListener((info: any) => { if (initializing) return; 
 }); });
 browser.windows.onFocusChanged.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
   if (selectorWindowId === windowId) selectorArmed = true;
-  else if (selectorWindowId !== undefined && selectorArmed) await dismissSelector();
+  else if (selectorWindowId !== undefined && selectorArmed) {
+    if (windowId === browser.windows.WINDOW_ID_NONE) {
+      const pendingSelectorId = selectorWindowId;
+      setTimeout(() => { void (async () => {
+        if (selectorWindowId !== pendingSelectorId || !selectorArmed) return;
+        const selector = await browser.windows.get(pendingSelectorId).catch(() => null);
+        if (!selector?.focused) await dismissSelector();
+      })(); }, 100);
+    } else await dismissSelector();
+  }
   if (!initialFocusSeen) { focusedWindowId = windowId; if (windowId !== browser.windows.WINDOW_ID_NONE) initialFocusSeen = true; return; }
   focusedWindowId = windowId;
   if (selectorWindowId === windowId) return;

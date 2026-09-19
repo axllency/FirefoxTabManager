@@ -70,6 +70,15 @@ export function displayUrl(raw?: string): string {
 export function rootDomainUrl(raw: string): string | null {
   try { const url = new URL(raw); return /^https?:$/.test(url.protocol) ? `${url.protocol}//${url.hostname.replace(/^www\./i, '')}/` : null; } catch { return null; }
 }
+export function frequentSiteDisplayName(raw: string): string {
+  try {
+    const hostname = new URL(raw).hostname;
+    if (!/^www\./i.test(hostname)) return hostname;
+    const withoutWww = hostname.replace(/^www\./i, '');
+    const withoutTld = withoutWww.replace(/\.[^.]+$/, '');
+    return withoutTld ? withoutTld[0].toLocaleUpperCase() + withoutTld.slice(1) : withoutWww;
+  } catch { return raw; }
+}
 export function firstSeenAgeLabel(firstSeen: number, currentTime = Date.now()): string | null {
   const elapsed = Math.max(0, currentTime - firstSeen);
   if (elapsed < 86400000) return `${Math.floor(elapsed / 3600000)}h`;

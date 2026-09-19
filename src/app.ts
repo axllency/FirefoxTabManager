@@ -1,4 +1,4 @@
-import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, type SortDirection } from './core';
+import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, type SortDirection } from './core';
 declare const browser: any;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
@@ -34,7 +34,6 @@ const lastActive = (time?: number) => {
   const minutes = Math.floor(elapsed / 60000);
   return minutes >= 1 ? `${minutes} min ago` : 'Just now';
 };
-const domain = (url?: string) => { try { return new URL(url || '').hostname || url || ''; } catch { return url || ''; } };
 const favicon = (url?: string) => {
   if (!url) return '';
   if (/^data:image\/(?:png|gif|jpeg|webp|svg\+xml);/i.test(url)) return url;
@@ -91,6 +90,7 @@ function layout() {
     const row = target.closest<HTMLElement>('[data-tab-id]'); if (!row) return;
     const tabId = Number(row.dataset.tabId);
     if (target.matches('input[type=checkbox]')) { if ((target as HTMLInputElement).checked) selected.add(tabId); else selected.delete(tabId); renderTabs(); return; }
+    if (target === row || target.closest('.cell-check')) return;
     if (target.matches('.more')) { row.querySelector('.row-menu')?.classList.toggle('hidden'); return; }
     if (target.matches('[data-action]')) { const action = target.dataset.action!; await bulk(action, [tabId]); return; }
     await run(async () => { await send('focus', { tabId }); if (page === 'popup') window.close(); });
@@ -272,8 +272,12 @@ function initTopBar() {
     for (const site of raw) {
       const url = rootDomainUrl(site.url); if (!url) continue;
       const existing = unique.get(url);
-      if (!existing) unique.set(url, { url, title: domain(url), favicon: site.favicon });
-      else if (!existing.favicon && site.favicon) existing.favicon = site.favicon;
+      const title = frequentSiteDisplayName(site.url);
+      if (!existing) unique.set(url, { url, title, favicon: site.favicon, shortened: /^www\./i.test(new URL(site.url).hostname) });
+      else {
+        if (!existing.favicon && site.favicon) existing.favicon = site.favicon;
+        if (!existing.shortened && /^www\./i.test(new URL(site.url).hostname)) { existing.title = title; existing.shortened = true; }
+      }
     }
     topSites = [...unique.values()]; renderTopSites();
   });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, retentionElapsed, checkpointRetention, selectorBounds, RETENTION_MS } from '../dist/core.mjs';
+import { urlKey, parseUrlFile, prune, chooseDuplicateSurvivors, filterAndSortTabs, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, retentionElapsed, checkpointRetention, selectorBounds, RETENTION_MS } from '../dist/core.mjs';
 
 test('URL keys strip only known tracking parameters', () => {
   assert.equal(urlKey('https://example.com/a?x=1&utm_source=mail&fbclid=abc#part'), 'https://example.com/a?x=1#part');
@@ -11,6 +11,8 @@ test('table URLs are compact and frequent sites collapse to root origins', () =>
   assert.equal(displayUrl('http://www.example.com/a'), 'http://www.example.com/a');
   assert.equal(rootDomainUrl('https://www.example.com/a?q=1'), 'https://example.com/');
   assert.equal(rootDomainUrl('about:config'), null);
+  assert.equal(frequentSiteDisplayName('https://www.example.com/a?q=1'), 'Example');
+  assert.equal(frequentSiteDisplayName('https://developer.mozilla.org/'), 'developer.mozilla.org');
 });
 test('selector uses 15 percent horizontal and 10 percent vertical insets', () => {
   assert.deepEqual(selectorBounds({ left: 100, top: 50, width: 1200, height: 900 }), { left: 280, top: 140, width: 840, height: 720 });

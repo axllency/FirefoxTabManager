@@ -57,6 +57,9 @@ test('session tabs restored after a week retain their records and last-access ti
   assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [280, 140, 840, 720]);
   handlers.focus(99);
   await new Promise(resolve => setImmediate(resolve));
+  handlers.focus(-1);
+  await new Promise(resolve => setTimeout(resolve, 125));
+  assert.equal(removedWindowId, undefined, 'temporary focus loss inside the popup does not close it');
   handlers.focus(1);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(removedWindowId, 99, 'selector closes after focus leaves it');
