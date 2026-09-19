@@ -1,6 +1,5 @@
 import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, sanitizeTabTitle, sanitizeTabUrl, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
 declare const chrome: any;
-const browser = chrome;
 
 const live = new Map<number, TabRecord>();
 const pendingAccess = new Set<number>();
@@ -81,13 +80,13 @@ function checkpointClock() {
   activeSince = store.retention.activeSince;
 }
 const tabValueKey = (tabId: number) => `ftmTabRecord:${tabId}`;
-async function getTabValue(tabId: number) { return (await browser.storage.session.get(tabValueKey(tabId)))[tabValueKey(tabId)]; }
-async function setTabValue(tabId: number, value: any) { await browser.storage.session.set({ [tabValueKey(tabId)]: value }); }
-async function removeTabValue(tabId: number) { await browser.storage.session.remove(tabValueKey(tabId)); }
+async function getTabValue(tabId: number) { return (await chrome.storage.session.get(tabValueKey(tabId)))[tabValueKey(tabId)]; }
+async function setTabValue(tabId: number, value: any) { await chrome.storage.session.set({ [tabValueKey(tabId)]: value }); }
+async function removeTabValue(tabId: number) { await chrome.storage.session.remove(tabValueKey(tabId)); }
 const save = () => {
   checkpointClock();
   store.open = Object.fromEntries([...live.values()].map(record => [record.recordId, { ...record }]));
-  writes = writes.then(() => browser.storage.local.set({ state: store }));
+  writes = writes.then(() => chrome.storage.local.set({ state: store }));
   return writes;
 };
 function migrateRetention(saved: any) {
@@ -97,9 +96,13 @@ function migrateRetention(saved: any) {
   for (const usage of Object.values(store.usage)) if (usage.closedAt !== undefined) usage.closedAtActiveMs = 0;
   for (const entry of store.undo) entry.atActiveMs = 0;
 }
+function removeLegacyBrowserFields() {
+  const records = [...Object.values(store.open), ...Object.values(store.closed), ...store.undo.flatMap(entry => entry.tabs)];
+  for (const record of records) delete (record as any).cookieStoreId;
+}
 
 async function normalTabs(): Promise<any[]> {
-  const windows = await browser.windows.getAll({ populate: true, windowTypes: ['normal'] });
+  const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
   return windows.filter((w: any) => !w.incognito).flatMap((w: any) => w.tabs || []).filter(eligible).map(sanitizeBrowserTab);
 }
 async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
@@ -119,7 +122,7 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
     firstSeen: startup && session?.firstSeen ? session.firstSeen : now(),
     url: '', title: '', windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned
   };
-  Object.assign(record, { url: tab.url === 'about:blank' && restored ? record.url : tab.url || record.url, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned, cookieStoreId: tab.cookieStoreId, closedAt: undefined, closedAtActiveMs: undefined, sessionId: undefined });
+  Object.assign(record, { url: tab.url === 'about:blank' && restored ? record.url : tab.url || record.url, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned, closedAt: undefined, closedAtActiveMs: undefined, sessionId: undefined });
   live.set(tab.id, record);
   if (closedRecord || reopenedRecord) delete store.closed[record.recordId];
   const usage = store.usage[urlKey(record.url)];
@@ -134,13 +137,13 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
 }
 async function refreshTab(tabId: number) {
   let tab: any;
-  try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
+  try { tab = sanitizeBrowserTab(await chrome.tabs.get(tabId)); } catch { return; }
   if (!eligible(tab)) return;
   const record = await makeRecord(tab);
   const previous = { url: record.url, title: record.title, windowId: record.windowId, index: record.index, pinned: record.pinned };
   const oldKey = urlKey(record.url);
   const nextUrl = tab.url === 'about:blank' && record.url && record.url !== 'about:blank' ? record.url : tab.url || record.url;
-  Object.assign(record, { url: nextUrl, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned, cookieStoreId: tab.cookieStoreId });
+  Object.assign(record, { url: nextUrl, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned });
   const nextKey = urlKey(record.url);
   if (store.usage[nextKey]) { delete store.usage[nextKey].closedAt; delete store.usage[nextKey].closedAtActiveMs; }
   if (oldKey !== nextKey && store.usage[oldKey] && ![...live.values()].some(r => urlKey(r.url) === oldKey)) { store.usage[oldKey].closedAt = now(); store.usage[oldKey].closedAtActiveMs = activeNow(); }
@@ -148,9 +151,9 @@ async function refreshTab(tabId: number) {
 }
 async function markAccess(tabId: number) {
   let tab: any;
-  try { tab = sanitizeBrowserTab(await browser.tabs.get(tabId)); } catch { return; }
+  try { tab = sanitizeBrowserTab(await chrome.tabs.get(tabId)); } catch { return; }
   if (!eligible(tab) || !tab.active || tab.status !== 'complete' || !/^https?:/.test(tab.url || '')) return;
-  const win = await browser.windows.get(tab.windowId).catch(() => null);
+  const win = await chrome.windows.get(tab.windowId).catch(() => null);
   if (!win?.focused || win.type !== 'normal' || win.incognito) return;
   focusedWindowId = tab.windowId;
   const record = await makeRecord(tab);
@@ -175,19 +178,20 @@ async function closeRecord(tabId: number) {
   await save();
 }
 const ready = (async () => {
-  const saved = (await browser.storage.local.get('state')).state;
+  const saved = (await chrome.storage.local.get('state')).state;
   store = { ...structuredClone(EMPTY_STORE), ...saved };
   store.preferences = { ...EMPTY_STORE.preferences, ...saved?.preferences };
   migrateRetention(saved);
-  const sessionState = await browser.storage.session.get('ftmClockSession');
+  removeLegacyBrowserFields();
+  const sessionState = await chrome.storage.session.get('ftmClockSession');
   const sameSession = sessionState.ftmClockSession === true;
   activeSince = sameSession ? store.retention.activeSince : undefined;
-  const windows = await browser.windows.getAll({ populate: true, windowTypes: ['normal'] });
+  const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
   for (const win of windows) if (!win.incognito) normalWindowIds.add(win.id);
   if (!normalWindowIds.size && activeSince !== undefined) { checkpointClock(); activeSince = undefined; }
   else if (activeSince === undefined) activeSince = now();
-  await browser.storage.session.set({ ftmClockSession: true });
-  try { focusedWindowId = (await browser.windows.getLastFocused()).id; } catch { /* no window */ }
+  await chrome.storage.session.set({ ftmClockSession: true });
+  try { focusedWindowId = (await chrome.windows.getLastFocused()).id; } catch { /* no window */ }
   for (const win of windows) if (!win.incognito) {
     for (const tab of win.tabs || []) if (eligible(tab)) {
       if (tab.active) initialActiveTabs.set(win.id, tab.id);
@@ -199,45 +203,46 @@ const ready = (async () => {
   initializing = false;
 })();
 
-browser.tabs.onCreated.addListener((tab: any) => { if (initializing) return; void ready.then(() => eligible(tab) && makeRecord(tab)); });
-browser.tabs.onRemoved.addListener((tabId: number) => { if (initializing) return; void ready.then(() => closeRecord(tabId)); });
-browser.tabs.onUpdated.addListener((tabId: number, change: any) => { void ready.then(async () => {
+chrome.tabs.onCreated.addListener((tab: any) => { if (initializing) return; void ready.then(() => eligible(tab) && makeRecord(tab)); });
+chrome.tabs.onRemoved.addListener((tabId: number) => { if (initializing) return; void ready.then(() => closeRecord(tabId)); });
+chrome.tabs.onUpdated.addListener((tabId: number, change: any) => { void ready.then(async () => {
   await refreshTab(tabId);
   if (change.status === 'complete' && pendingAccess.delete(tabId)) await markAccess(tabId);
 }); });
-browser.tabs.onAttached.addListener((tabId: number) => { void ready.then(() => refreshTab(tabId)); });
-browser.tabs.onMoved.addListener((tabId: number) => { void ready.then(() => refreshTab(tabId)); });
-browser.tabs.onActivated.addListener((info: any) => { if (initializing) return; void ready.then(async () => {
+chrome.tabs.onAttached.addListener((tabId: number) => { void ready.then(() => refreshTab(tabId)); });
+chrome.tabs.onMoved.addListener((tabId: number) => { void ready.then(() => refreshTab(tabId)); });
+chrome.tabs.onActivated.addListener((info: any) => { if (initializing) return; void ready.then(async () => {
   if (initialActiveTabs.get(info.windowId) === info.tabId) { initialActiveTabs.delete(info.windowId); return; }
   initialActiveTabs.delete(info.windowId);
-  const rawTab = await browser.tabs.get(info.tabId).catch(() => null);
+  const rawTab = await chrome.tabs.get(info.tabId).catch(() => null);
   const tab = rawTab ? sanitizeBrowserTab(rawTab) : null;
   if (!eligible(tab)) return;
   if (tab.status === 'complete') await markAccess(tab.id); else pendingAccess.add(tab.id);
 }); });
-browser.windows.onFocusChanged.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
+chrome.windows.onFocusChanged.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
   focusedWindowId = windowId;
-  if (windowId === browser.windows.WINDOW_ID_NONE) return;
-  const win = await browser.windows.get(windowId).catch(() => null);
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  const win = await chrome.windows.get(windowId).catch(() => null);
   if (!win || win.type !== 'normal' || win.incognito) return;
-  const [tab] = await browser.tabs.query({ windowId, active: true });
+  const [tab] = await chrome.tabs.query({ windowId, active: true });
   if (eligible(tab)) { if (tab.status === 'complete') await markAccess(tab.id); else pendingAccess.add(tab.id); }
 }); });
-browser.windows.onCreated.addListener((win: any) => { if (initializing) return; void ready.then(async () => {
+chrome.windows.onCreated.addListener((win: any) => { if (initializing) return; void ready.then(async () => {
   if ((win.type && win.type !== 'normal') || win.incognito) return;
   const wasInactive = normalWindowIds.size === 0;
   normalWindowIds.add(win.id);
   if (wasInactive) activeSince = now();
   await save();
 }); });
-browser.windows.onRemoved.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
+chrome.windows.onRemoved.addListener((windowId: number) => { if (initializing) return; void ready.then(async () => {
+  initialActiveTabs.delete(windowId);
   normalWindowIds.delete(windowId);
   if (!normalWindowIds.size && activeSince !== undefined) { checkpointClock(); activeSince = undefined; }
   await save();
 }); });
 
-browser.commands.onCommand.addListener((command: string) => {
-  if (command === 'open-tab-manager') void browser.action.openPopup().catch(() => {});
+chrome.commands.onCommand.addListener((command: string) => {
+  if (command === 'open-tab-manager') void chrome.action.openPopup().catch(() => {});
 });
 
 async function snapshot() {
@@ -246,7 +251,7 @@ async function snapshot() {
   return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId };
 }
 async function validateTabs(tabIds: number[]) {
-  const results = await Promise.all([...new Set(tabIds)].map((tabId) => browser.tabs.get(tabId).catch(() => null)));
+  const results = await Promise.all([...new Set(tabIds)].map((tabId) => chrome.tabs.get(tabId).catch(() => null)));
   const tabs = results.filter(eligible).map(sanitizeBrowserTab);
   await Promise.all(tabs.map((tab: any) => refreshTab(tab.id)));
   return tabs;
@@ -258,8 +263,8 @@ async function doClose(tabs: any[]) {
   for (const [index, tab] of tabs.entries()) {
     const recordId = entry.tabs[index]?.recordId;
     try {
-      await browser.tabs.remove(tab.id);
-      const recently = await browser.sessions.getRecentlyClosed({ maxResults: 5 });
+      await chrome.tabs.remove(tab.id);
+      const recently = await chrome.sessions.getRecentlyClosed({ maxResults: 5 });
       const match = recently.find((s: any) => !s.tab?.incognito && s.tab?.url === tab.url && s.tab?.sessionId);
       if (match) { const record = entry.tabs.find(r => r.recordId === recordId); if (record) record.sessionId = match.tab.sessionId; }
     } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); entry.tabs = entry.tabs.filter(r => r.recordId !== recordId); }
@@ -280,11 +285,11 @@ async function undo(entryId?: string) {
       if (!current) { errors.push(`Missing tab: ${record.title}`); continue; }
       try {
         let target = record.windowId;
-        try { await browser.windows.get(target); } catch {
-          if (!replacementWindows.has(target)) replacementWindows.set(target, (await browser.windows.create({ tabId: current[0] })).id);
+        try { await chrome.windows.get(target); } catch {
+          if (!replacementWindows.has(target)) replacementWindows.set(target, (await chrome.windows.create({ tabId: current[0] })).id);
           target = replacementWindows.get(target)!;
         }
-        await browser.tabs.move(current[0], { windowId: target, index: record.index });
+        await chrome.tabs.move(current[0], { windowId: target, index: record.index });
       } catch { errors.push(`Could not restore placement: ${record.title}`); }
     }
   } else {
@@ -293,15 +298,15 @@ async function undo(entryId?: string) {
       try {
         if ([...live.values()].some(r => r.recordId === record.recordId)) continue;
         let restored: any;
-        if (record.sessionId) restored = (await browser.sessions.restore(record.sessionId).catch(() => null))?.tab;
+        if (record.sessionId) restored = (await chrome.sessions.restore(record.sessionId).catch(() => null))?.tab;
         if (!restored) {
           const opts: any = { url: record.url, active: false, pinned: record.pinned };
-          try { const win = await browser.windows.get(record.windowId); if (!win.incognito && win.type === 'normal') opts.windowId = win.id; } catch { /* recreate original grouping */ }
+          try { const win = await chrome.windows.get(record.windowId); if (!win.incognito && win.type === 'normal') opts.windowId = win.id; } catch { /* recreate original grouping */ }
           if (!opts.windowId && replacementWindows.has(record.windowId)) opts.windowId = replacementWindows.get(record.windowId);
           if (!opts.windowId) {
-            restored = (await browser.windows.create({ url: record.url })).tabs[0];
+            restored = (await chrome.windows.create({ url: record.url })).tabs[0];
             replacementWindows.set(record.windowId, restored.windowId);
-          } else restored = await browser.tabs.create(opts);
+          } else restored = await chrome.tabs.create(opts);
           live.set(restored.id, { ...record, windowId: restored.windowId, index: restored.index, closedAt: undefined, closedAtActiveMs: undefined });
           await setTabValue(restored.id, { recordId: record.recordId, firstSeen: record.firstSeen });
           delete store.closed[record.recordId];
@@ -317,7 +322,7 @@ async function action(message: any): Promise<any> {
   await ready;
   store = prune(store, activeNow());
   if (message.type === 'snapshot') return snapshot();
-  if (message.type === 'focus') { const tab = await browser.tabs.get(message.tabId); if (!eligible(tab)) throw Error('Tab unavailable'); await browser.windows.update(tab.windowId, { focused: true }); return browser.tabs.update(tab.id, { active: true }); }
+  if (message.type === 'focus') { const tab = await chrome.tabs.get(message.tabId); if (!eligible(tab)) throw Error('Tab unavailable'); await chrome.windows.update(tab.windowId, { focused: true }); return chrome.tabs.update(tab.id, { active: true }); }
   if (message.type === 'undo') return undo(message.entryId);
   if (message.type === 'saveCollection') {
     const tabs = await validateTabs(message.tabIds);
@@ -357,8 +362,8 @@ async function action(message: any): Promise<any> {
     if (!items.length) return { count: 0 };
     const currentWindowId = focusedWindowId;
     let created = !!message.newWindow || currentWindowId < 0;
-    let winId = created ? (await browser.windows.create({ url: items[0].url })).id : currentWindowId;
-    for (const item of items.slice(created ? 1 : 0)) await browser.tabs.create({ windowId: winId, url: item.url, active: false });
+    let winId = created ? (await chrome.windows.create({ url: items[0].url })).id : currentWindowId;
+    for (const item of items.slice(created ? 1 : 0)) await chrome.tabs.create({ windowId: winId, url: item.url, active: false });
     return { count: items.length };
   }
   let tabs = await validateTabs(message.tabIds || []);
@@ -373,21 +378,21 @@ async function action(message: any): Promise<any> {
     const urls = tabs.map(t => t.url).filter((url: string) => /^https?:/.test(url || ''));
     if (!urls.length) throw Error('No HTTP(S) URLs to export.');
     const downloadUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(urls.join('\n') + '\n')}`;
-    const downloadId = await browser.downloads.download({ url: downloadUrl, filename: `chromium-tabs-${new Date().toISOString().slice(0, 10)}.txt`, saveAs: true, conflictAction: 'uniquify' });
+    const downloadId = await chrome.downloads.download({ url: downloadUrl, filename: `chromium-tabs-${new Date().toISOString().slice(0, 10)}.txt`, saveAs: true, conflictAction: 'uniquify' });
     await new Promise<void>((resolve, reject) => {
       const listener = (change: any) => {
         if (change.id !== downloadId || !change.state) return;
-        browser.downloads.onChanged.removeListener(listener);
+        chrome.downloads.onChanged.removeListener(listener);
         if (change.state.current === 'complete') resolve(); else reject(Error('Export did not complete; tabs were kept open.'));
       };
-      browser.downloads.onChanged.addListener(listener);
+      chrome.downloads.onChanged.addListener(listener);
     });
     return { count: urls.length, errors: [] };
   }
   if (message.type === 'discard') {
     const errors: string[] = []; let count = 0;
     for (const tab of tabs) try {
-      const discarded = await browser.tabs.discard(tab.id);
+      const discarded = await chrome.tabs.discard(tab.id);
       if (!discarded?.discarded) throw Error('Tab is active, already unloaded, or could not be unloaded.');
       count++;
     } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
@@ -396,11 +401,11 @@ async function action(message: any): Promise<any> {
   if (message.type === 'move') {
     const entry: UndoEntry = { id: id(), kind: 'move', at: now(), atActiveMs: activeNow(), tabs: [] };
     const originals = new Map(tabs.map(t => [t.id, { ...live.get(t.id)! }]));
-    const target = message.newWindow ? (await browser.windows.create({ tabId: tabs[0].id })).id : message.windowId;
+    const target = message.newWindow ? (await chrome.windows.create({ tabId: tabs[0].id })).id : message.windowId;
     const errors: string[] = []; let count = 0;
     for (const [index, tab] of tabs.entries()) {
       if (message.newWindow && index === 0) { entry.tabs.push(originals.get(tab.id)!); count++; continue; }
-      try { await browser.tabs.move(tab.id, { windowId: target, index: message.newWindow ? 0 : -1 }); entry.tabs.push(originals.get(tab.id)!); count++; }
+      try { await chrome.tabs.move(tab.id, { windowId: target, index: message.newWindow ? 0 : -1 }); entry.tabs.push(originals.get(tab.id)!); count++; }
       catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
     }
     if (count) { store.undo.unshift(entry); store.undo = store.undo.slice(0, 30); await save(); }
@@ -409,9 +414,9 @@ async function action(message: any): Promise<any> {
   if (message.type === 'weatherSettings') { store.weather = message.weather; await save(); return true; }
   throw Error('Unknown action');
 }
-browser.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: any) => void) => {
-  const extensionRoot = browser.runtime.getURL('');
-  if (sender?.id !== browser.runtime.id || typeof sender?.url !== 'string' || !sender.url.startsWith(extensionRoot)) {
+chrome.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: any) => void) => {
+  const extensionRoot = chrome.runtime.getURL('');
+  if (sender?.id !== chrome.runtime.id || typeof sender?.url !== 'string' || !sender.url.startsWith(extensionRoot)) {
     sendResponse({ __atmError: 'Untrusted message sender' });
     return false;
   }

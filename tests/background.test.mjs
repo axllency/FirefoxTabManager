@@ -11,7 +11,7 @@ test('session tabs restored after a week retain their records and last-access ti
   const priorAccess = currentTime - week;
   const urls = ['https://www.youtube.com/watch?v=one', 'https://www.youtube.com/watch?v=two'];
   const tabs = urls.map((url, index) => ({ id: 11 + index, windowId: 1, index, url: index ? 'about:blank' : url, pendingUrl: index ? url : undefined, title: `Video ${index}`, active: index === 0, status: 'complete', incognito: false, pinned: false, lastAccessed: priorAccess }));
-  const records = Object.fromEntries(tabs.map((tab, index) => [`record-${index}`, { recordId: `record-${index}`, firstSeen: priorAccess - 1000, url: urls[index], title: tab.title, windowId: 1, index, pinned: false, closedAt: priorAccess, closedAtActiveMs: 60_000 }]));
+  const records = Object.fromEntries(tabs.map((tab, index) => [`record-${index}`, { recordId: `record-${index}`, firstSeen: priorAccess - 1000, url: urls[index], title: tab.title, windowId: 1, index, pinned: false, cookieStoreId: 'legacy-container', closedAt: priorAccess, closedAtActiveMs: 60_000 }]));
   let persisted = { open: records, closed: {}, usage: Object.fromEntries(urls.map(url => [url, { lastAccess: priorAccess, activations: 3, closedAt: priorAccess, closedAtActiveMs: 60_000 }])), collections: [], undo: [{ id: 'undo-1', kind: 'close', at: priorAccess, atActiveMs: 0, tabs: [] }], retention: { elapsedMs: 60_000, activeSince: priorAccess } };
   let messageHandler;
   let rawMessageHandler;
@@ -43,6 +43,7 @@ test('session tabs restored after a week retain their records and last-access ti
   assert.deepEqual(snapshot.tabs.map(tab => tab.isLoaded), [true, true]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.lastAccess), [priorAccess, priorAccess]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.firstSeen), [priorAccess - 1000, priorAccess - 1000]);
+  assert.equal(Object.values(persisted.open).some(record => 'cookieStoreId' in record), false, 'legacy container metadata is removed');
   const discardResult = await messageHandler({ type: 'discard', tabIds: [12] });
   assert.equal(discardResult.count, 1);
   assert.equal(discardResult.errors.length, 0);

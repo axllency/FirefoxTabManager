@@ -1,44 +1,121 @@
 # Advanced Tab Manager
 
-A Chromium 127+ desktop extension for finding and managing tabs across windows. It is designed for Google Chrome, Microsoft Edge, and other Chromium browsers that support the required Manifest V3 APIs. Browsing records and collections stay in extension local storage. Incognito tabs are excluded.
+Advanced Tab Manager is a Manifest V3 extension for Chromium 127 and newer. It provides a compact toolbar popup and a larger dashboard for finding and managing tabs across normal browser windows. It is intended for Google Chrome, Microsoft Edge, and Chromium browsers that support the APIs declared in the manifest.
 
-## Build and try it
+> [!CAUTION]
+> This project was originally written as a Firefox extension and converted to Chromium with minimal effort. The main Firefox-specific APIs and manifest fields have been replaced, but browser-specific bugs may remain. Back up important tabs before using bulk Close, Combine tabs, or Undo operations.
 
-1. Install Node.js 20 or later and run `npm install`.
-2. Run `npm run check`, `npm test`, and `npm run lint`.
-3. Open `chrome://extensions` in Chrome or `edge://extensions` in Edge, enable **Developer mode**, choose **Load unpacked**, and select the `dist` directory.
-4. Click the toolbar button or use Alt+Shift+A. The browser's extension shortcut page can change the shortcut (`chrome://extensions/shortcuts` or `edge://extensions/shortcuts`). The selector opens as the browser's standard extension popup and closes when focus moves outside it or when you press Escape. Open the dashboard from the popup.
+Incognito tabs are excluded from search results, actions, exports, collections, and stored browsing data. Tab records and preferences are stored locally in the extension.
 
-The popup runs in Chromium's normal extension context. Incognito tabs never appear in Advanced Tab Manager or enter its stored tab data.
+## Current features
 
-Search matches tab titles and URLs as you type. A `window:#` term limits results to a Chromium window ID and can be combined with text, such as `youtube window:12`. The **Is / Not** operator includes or excludes matches. **First seen**, **Last active**, and **All tabs / Loaded tabs / Unloaded tabs** controls provide additional filters; their default **Any age**, **Any time**, and **All tabs** values do not restrict results.
+### Search, filter, and sort
 
-Click a tab-list column heading to sort by it; click again to reverse the order. Non-Title sorts use Last active descending and Title ascending to break ties. Drag a column's right edge to resize it. Column widths are remembered for the popup and dashboard. **Menu** provides controls to reset column widths and choose a saved interface font size.
+- Search open tab titles and URLs across all normal Chromium windows as you type.
+- Use `window:#` to restrict results to a Chromium window ID, such as `youtube window:12`.
+- Use **Is** to include matches or **Not** to exclude them.
+- Filter by tab **Age** using older/younger than 1, 3, 7, or 30 days.
+- Filter by **Last active** using within/before 1, 3, 7, or 30 days.
+- Filter the table to all, loaded, or unloaded tabs.
+- Sort by clicking a column heading; click it again to reverse the direction.
+- For non-Title sorts, ties use Last active descending and then Title ascending.
+- Resize table columns by dragging their dividers. Saved widths can be reset under **Menu**.
 
-### Keyboard navigation
+Age represents when the extension first observed the tab. Tabs younger than one day display hours; older tabs display days. Last active uses Chrome's `lastAccessed` value to initialize a URL record and is subsequently updated when a loaded tab is active in a focused normal window.
 
-- Press **Enter** while the search box is focused to activate the top tab in the currently filtered and sorted results. In the selector popup, this also closes the popup.
-- Press **Tab** from the search box to focus the first visible Title cell, then continue pressing **Tab** to move through Title cells in table order.
-- Press **Shift+Tab** to move backward through Title cells. From the first Title cell, **Shift+Tab** returns focus to the search box.
-- Press **Enter** on a focused Title cell to activate that tab using the same cross-window navigation as clicking its row.
+### Tab actions
 
-Choose a bulk action, select one or more tabs, and press **Go** to run it; Go is disabled when nothing is selected. Actions are ordered by their locally stored usage frequency and include Close, Unload, Save collection, Save and close, Export URLs, Combine tabs, and Close duplicates. Export downloads one URL per line without closing tabs. **Combine tabs** always creates a new window in the current table order, with the top row placed at the right. Collections and frequent root domains can be pinned or removed from their dropdowns; removed frequent sites can be restored under **Menu → Settings**.
+Select tabs with their checkboxes, choose an action, and press **Go**. Go remains disabled when no tabs are selected. Actions are reordered according to their locally recorded usage frequency.
 
-Both the popup and dashboard show **Collections** and **Frequently visited** dropdowns beside the title. The top bar shows the selected city's current weather and today's high and low; use **Menu** to configure Weather or access Undo.
+Available actions include:
 
-Open dashboards refresh their tab tables when tabs open, close, load, unload, or otherwise update. Closed tabs leave the table; Undo remains available from **Menu**.
+- Close selected tabs.
+- Unload selected tabs with Chrome's tab discard API.
+- Save selected tabs as a collection.
+- Save a collection and close its tabs.
+- Export selected HTTP(S) URLs to a text file without closing them.
+- Combine selected tabs into a new window using the current table order. The top result becomes the rightmost tab.
+- Close exact-URL duplicates while preferring the focused active copy and then the most recently active copy.
 
-An unpacked extension remains installed until it is removed, but Chromium disables it if its source directory becomes unavailable. Chrome Web Store or enterprise packaging is needed for normal distribution.
+Clicking a tab title activates that tab and focuses its browser window. Row menus provide common actions for individual tabs.
+
+### Collections and frequently visited sites
+
+- Collections are independent URL snapshots stored in `chrome.storage.local`.
+- Open one collection URL, open a collection in the current window, or open it in a new window.
+- Import a plain-text file containing one HTTP(S) URL per line.
+- Pin or delete collections from the Collections dropdown.
+- Frequently visited entries are reduced to root domains and use Chrome's favicon service.
+- Pin or hide frequently visited entries. Hidden entries can be restored under **Menu → Settings**.
+
+### Dashboard, weather, and display settings
+
+- Open the full dashboard by clicking the extension title or choosing **Dashboard** from the popup menu.
+- Open dashboards update when tabs are created, closed, or updated.
+- Optional weather accepts a city or postal code and displays current, high, and low temperatures while the interface is open.
+- Weather uses Open-Meteo and is disabled by default.
+- Font size and column-width controls are available under **Menu**.
+
+### Undo and retention
+
+- Bulk close and tab-move operations create Undo entries.
+- Closed-tab records, URL activity records for URLs no longer open, and Undo entries expire after three days of eligible browser runtime.
+- The three-day timer advances only while at least one normal, non-incognito Chromium window is open. Closing the browser pauses this retention timer.
+- Last-active values remain wall-clock timestamps. A tab last used before Chrome was closed for a week will display as last active a week ago when Chrome reopens.
+- Collections do not expire.
+
+## Keyboard use
+
+The default extension shortcut is **Alt+Shift+A**.
+
+- **Enter** in the search field activates the first filtered and sorted result.
+- **Tab** from the search field moves directly to the first visible Title cell.
+- Continue pressing **Tab** to move through Title cells.
+- **Shift+Tab** moves backward; from the first Title cell it returns to the search field.
+- **Enter** on a focused Title cell activates that tab and focuses its window.
+- **Escape** closes the toolbar popup.
+
+### Change the extension shortcut
+
+Chrome does not allow an extension to overwrite a shortcut that the user or another extension already owns. If **Alt+Shift+A** is unavailable, Chrome may leave the command unassigned.
+
+In Google Chrome:
+
+1. Open `chrome://extensions/shortcuts`.
+2. Find **Advanced Tab Manager**.
+3. Click the shortcut field beside **Open Advanced Tab Manager**.
+4. Press the desired key combination.
+5. If Chrome shows a scope selector, choose **In Chrome** or **Global** as preferred. Global availability depends on the browser and operating system.
+
+In Microsoft Edge, follow the same steps at `edge://extensions/shortcuts`. Other Chromium browsers generally provide the equivalent page at their browser-specific `://extensions/shortcuts` address.
+
+After reloading or updating an unpacked extension, revisit the shortcuts page if the hotkey stops working. Chromium preserves user shortcut settings and does not always reapply a changed manifest default.
+
+## Build and install
+
+1. Install Node.js 20 or later.
+2. Run `npm install`.
+3. Run `npm run check`, `npm test`, and `npm run lint`.
+4. Open `chrome://extensions` or `edge://extensions`.
+5. Enable **Developer mode**.
+6. Choose **Load unpacked** and select the generated `dist` directory.
+7. Pin Advanced Tab Manager if you want its toolbar button to remain visible.
+
+After changing the source, rebuild with `npm run build`, then press **Reload** on the extension's card.
+
+An unpacked extension remains installed until removed, but it becomes unavailable if its source directory is moved or deleted. Normal distribution requires Chrome Web Store, Microsoft Edge Add-ons, or enterprise packaging.
 
 ## Data and limitations
 
-- First-seen time is the extension's observation time for tabs that predate installation.
-- Last active is recorded when a loaded tab is selected in the focused browser window. The URL key removes `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `mc_cid`, `mc_eid`, and `igshid` parameters. Other query parameters and fragments remain.
-- Closed-tab records, URL usage after the last matching tab closes, and undo entries expire after three days of time with at least one normal, non-incognito Chromium window open. The timer pauses when no such window is open, including while the browser is closed. Collections do not expire. Last-active timestamps remain wall-clock times: a tab last used before a week-long browser shutdown still displays as last active a week ago when the session returns.
-- Chromium does not provide per-tab CPU or RAM through the extensions tabs API, so the table does not display those measurements.
-- Undo prefers Chromium's sessions restore API. After a browser restart, reopening URLs may lose navigation history, form data, tab groups, and some window placement. Chromium does not expose Firefox-style per-tab session values, so native reopen recognition uses persisted records and an exact-URL match within the three-day retention window.
-- Weather is off by default. Enabling it and searching for a city or postal code sends the entered location to Open-Meteo. Network access is limited to the two Open-Meteo API origins declared in the manifest.
+- Tab titles and URLs are sanitized when retrieved from Chrome.
+- Last-active URL keys remove `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `mc_cid`, `mc_eid`, and `igshid`. Other query parameters and fragments remain.
+- Duplicate tabs share URL-level Last active data after those tracking parameters are removed.
+- Chromium does not expose per-tab CPU or RAM through the Tabs API, so those measurements are not displayed.
+- Undo prefers Chromium's Sessions API. After restart, fallback URL reopening may lose navigation history, form data, tab groups, and exact window placement.
+- Chromium does not persist extension-defined values directly on tabs. The extension uses session and local storage plus exact-URL matching to reconnect records.
+- Unloading can fail for an active, already unloaded, or otherwise non-discardable tab.
+- Weather sends the entered location and selected coordinates to Open-Meteo. Network access is limited to the two Open-Meteo origins declared in the manifest.
 
 ## Future work
 
-- Add automatic device-location weather with explicit opt-in. Manual city or postal-code weather is already available.
+- Add automatic device-location weather with explicit opt-in. Manual city and postal-code weather is already available.

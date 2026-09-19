@@ -6,7 +6,7 @@ if (manifest.background?.service_worker !== 'background.js') throw Error('Chromi
 if (manifest.action?.default_popup !== 'popup.html') throw Error('The toolbar action must use the standard Chromium extension popup.');
 if (Number(manifest.minimum_chrome_version) < 127) throw Error('Chrome 127+ is required for action.openPopup().');
 if (manifest.commands?.['open-tab-manager']?.suggested_key?.default !== 'Alt+Shift+A') throw Error('The popup command must default to Alt+Shift+A.');
-if (manifest.background?.scripts || manifest.browser_specific_settings) throw Error('Firefox-only manifest fields are present.');
+if (manifest.background?.scripts || manifest.browser_specific_settings) throw Error('Non-Chromium manifest fields are present.');
 for (const permission of ['tabs', 'storage', 'sessions', 'downloads', 'topSites', 'favicon']) {
   if (!manifest.permissions?.includes(permission)) throw Error(`Missing permission: ${permission}`);
 }

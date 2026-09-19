@@ -9,7 +9,7 @@ export function sanitizeTabUrl(value: unknown): string {
   return String(value ?? '').replace(UNSAFE_TEXT, '').replace(/\s/g, '').trim().slice(0, 16384);
 }
 
-export interface TabRecord { recordId: string; firstSeen: number; url: string; title: string; windowId: number; index: number; pinned: boolean; cookieStoreId?: string; closedAt?: number; closedAtActiveMs?: number; sessionId?: string }
+export interface TabRecord { recordId: string; firstSeen: number; url: string; title: string; windowId: number; index: number; pinned: boolean; closedAt?: number; closedAtActiveMs?: number; sessionId?: string }
 export interface UrlUsage { lastAccess?: number; activations: number; closedAt?: number; closedAtActiveMs?: number }
 export interface Collection { id: string; name: string; createdAt: number; pinned?: boolean; tabs: { url: string; title: string }[] }
 export interface UndoEntry { id: string; kind: 'close' | 'move'; at: number; atActiveMs?: number; tabs: TabRecord[]; destinationWindowId?: number }
@@ -61,7 +61,7 @@ export function chooseDuplicateSurvivors<T extends { id: number; url?: string; a
 }
 
 export type SortDirection = 'asc' | 'desc';
-export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'hidden', 'attention', 'isArticle', 'isInReaderMode'].includes(field) ? 'desc' : 'asc';
+export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'frozen'].includes(field) ? 'desc' : 'asc';
 export function displayUrl(raw?: string): string {
   if (!raw) return '';
   return raw.replace(/^https:\/\//i, '').replace(/^www\./i, '');

@@ -20,11 +20,11 @@ test('table URLs are compact and frequent sites collapse to root origins', () =>
   assert.equal(frequentSiteDisplayName('https://www.example.com/a?q=1'), 'Example');
   assert.equal(frequentSiteDisplayName('https://www.example.org/a'), 'Example.org');
   assert.equal(frequentSiteDisplayName('https://www.paypal.com.evil/a'), 'Paypal.com.evil');
-  assert.equal(frequentSiteDisplayName('https://developer.mozilla.org/'), 'developer.mozilla.org');
+  assert.equal(frequentSiteDisplayName('https://developer.chrome.com/'), 'developer.chrome.com');
 });
 test('URL list rejects unsafe and malformed lines', () => {
-  const parsed = parseUrlFile('# comment\nhttps://example.com\n javascript:alert(1)\nnope\nhttp://mozilla.org');
-  assert.deepEqual(parsed.urls, ['https://example.com/', 'http://mozilla.org/']);
+  const parsed = parseUrlFile('# comment\nhttps://example.com\n javascript:alert(1)\nnope\nhttp://chromium.org');
+  assert.deepEqual(parsed.urls, ['https://example.com/', 'http://chromium.org/']);
   assert.deepEqual(parsed.invalid.map(x => x.line), [3, 4]);
 });
 test('retention expires closed records, URL usage and undo together', () => {

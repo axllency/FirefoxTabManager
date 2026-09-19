@@ -1,6 +1,5 @@
 import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, type SortDirection } from './core';
 declare const chrome: any;
-const browser = chrome;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
 const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
@@ -22,7 +21,7 @@ try {
 } catch { /* Ignore invalid saved layout. */ }
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 const send = async (type: string, data: any = {}) => {
-  const response = await browser.runtime.sendMessage({ type, ...data });
+  const response = await chrome.runtime.sendMessage({ type, ...data });
   if (response?.__atmError) throw Error(response.__atmError);
   return response?.__atmResult;
 };
@@ -96,10 +95,10 @@ function layout() {
   $('#selectAll').addEventListener('click', () => { if (selected.size) selected.clear(); else filtered.forEach(t => selected.add(t.id)); renderTabs(); });
   $('#undo').addEventListener('click', () => run(async () => { const r = await send('undo'); notice(`Restored ${r.count} tab(s). ${r.errors.join(' ')}`); await refresh(); }));
   const openDashboard = () => run(async () => {
-    const windows = (await browser.windows.getAll({ windowTypes: ['normal'] })).filter((win: any) => !win.incognito);
+    const windows = (await chrome.windows.getAll({ windowTypes: ['normal'] })).filter((win: any) => !win.incognito);
     const target = windows.find((win: any) => win.focused) || windows[0];
-    if (target) await browser.tabs.create({ windowId: target.id, url: browser.runtime.getURL('dashboard.html'), active: true });
-    else await browser.windows.create({ url: browser.runtime.getURL('dashboard.html'), incognito: false });
+    if (target) await chrome.tabs.create({ windowId: target.id, url: chrome.runtime.getURL('dashboard.html'), active: true });
+    else await chrome.windows.create({ url: chrome.runtime.getURL('dashboard.html'), incognito: false });
     window.close();
   });
   if (page === 'popup') $('#dashboard').addEventListener('click', openDashboard);
@@ -168,10 +167,10 @@ function layout() {
   if (page === 'dashboard') {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefresh = () => { if (refreshTimer) clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { void run(refresh); }, 75); };
-    browser.tabs.onCreated.addListener(scheduleRefresh);
-    browser.tabs.onRemoved.addListener(scheduleRefresh);
-    browser.tabs.onUpdated.addListener(scheduleRefresh);
-    browser.storage.onChanged.addListener((changes: any, area: string) => { if (area === 'local' && changes.state) scheduleRefresh(); });
+    chrome.tabs.onCreated.addListener(scheduleRefresh);
+    chrome.tabs.onRemoved.addListener(scheduleRefresh);
+    chrome.tabs.onUpdated.addListener(scheduleRefresh);
+    chrome.storage.onChanged.addListener((changes: any, area: string) => { if (area === 'local' && changes.state) scheduleRefresh(); });
   }
   initTopBar();
 }
@@ -310,13 +309,13 @@ function initTopBar() {
     await refresh();
   }));
   void run(async () => {
-    const raw = await browser.topSites.get();
+    const raw = await chrome.topSites.get();
     const unique = new Map<string, any>();
     for (const site of raw) {
       const url = rootDomainUrl(site.url); if (!url) continue;
       const existing = unique.get(url);
       const title = frequentSiteDisplayName(site.url);
-      const faviconUrl = new URL(browser.runtime.getURL('/_favicon/'));
+      const faviconUrl = new URL(chrome.runtime.getURL('/_favicon/'));
       faviconUrl.searchParams.set('pageUrl', site.url); faviconUrl.searchParams.set('size', '16');
       if (!existing) unique.set(url, { url, title, favicon: faviconUrl.href, shortened: /^www\./i.test(new URL(site.url).hostname) });
       else {
