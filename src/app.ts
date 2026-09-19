@@ -170,6 +170,9 @@ async function refresh() { Object.assign(state, await send('snapshot')); selecte
 function applyFontSize() {
   const size = [12, 14, 16, 18].includes(state.preferences?.fontSize) ? state.preferences.fontSize : 14;
   document.documentElement.style.fontSize = `${size}px`;
+  document.documentElement.style.setProperty('--atm-table-font-size', `${size}px`);
+  const table = document.querySelector<HTMLElement>('#tabs');
+  if (table) table.style.fontSize = `${size}px`;
   const select = $('#fontSize') as HTMLSelectElement | null;
   if (select) select.value = String(size);
 }

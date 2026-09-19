@@ -37,7 +37,7 @@ small { font-size: 12px; opacity: .7; }
 .toolbar-spacer { flex: 1; }
 #notice { color: #c04d3d; }
 #notice:empty { display: none; }
-.tab-list { border-top: 1px solid var(--line); overflow-x: hidden; overflow-y: auto; max-height: 410px; }
+.tab-list { border-top: 1px solid var(--line); overflow-x: hidden; overflow-y: auto; max-height: 410px; font-size: var(--atm-table-font-size, 14px); }
 body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(--line); border-radius: 10px; }
 .tab-grid {
   display: grid;
@@ -50,12 +50,12 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 }
 .tab-heading {
   position: sticky; top: 0; z-index: 3;
-  min-height: 24px; background: Canvas;
+  min-height: max(24px, 1.8em); background: Canvas;
   border-bottom: 1px solid var(--line);
-  font-size: 11px; font-weight: 700;
+  font-size: var(--atm-table-font-size, 14px); font-weight: 700;
 }
 .column-heading { position: relative; min-width: 0; overflow: visible; }
-.sort-header { display: flex; align-items: center; gap: 3px; width: 100%; min-width: 0; height: 22px; padding: 0 2px; border: 0; border-radius: 0; background: transparent; font-size: 11px; font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.sort-header { display: flex; align-items: center; gap: 3px; width: 100%; min-width: 0; min-height: 1.6em; padding: 0 2px; border: 0; border-radius: 0; background: transparent; font-size: var(--atm-table-font-size, 14px); font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer; }
 .sort-header:hover { color: var(--accent); }
 .sort-arrow { color: var(--accent); font-size: 9px; }
 .resize-handle { position: absolute; z-index: 4; right: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
@@ -64,7 +64,7 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 .tab-row.unloaded .cell-title { opacity: .62; }
 .tab-row.unloaded .cell-url { opacity: .5; }
 .tab-row {
-  min-height: 28px; padding-top: 2px; padding-bottom: 2px;
+  min-height: max(28px, 1.8em); padding-top: 2px; padding-bottom: 2px;
   border-bottom: 1px solid var(--line);
   position: relative; cursor: pointer;
 }
@@ -73,13 +73,13 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 .cell-icon { display: grid; place-items: center; }
 .cell-check input { margin: 0; }
 .tab-row strong, .tab-row span[role=cell] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cell-title { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; font-weight: 650; }
+.cell-title { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: var(--atm-table-font-size, 14px); font-weight: 650; }
 .title-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .site-icon { position: relative; display: inline-grid; place-items: center; width: 15px; height: 15px; flex: none; }
 .site-icon-fallback { font-size: 13px; line-height: 1; opacity: .45; }
 .tab-favicon { position: absolute; inset: 0; width: 15px; height: 15px; object-fit: contain; background: Canvas; }
-.cell-date, .cell-center, .cell-url { font-size: 11px; }
-.cell-date, .cell-center, .cell-url { line-height: 24px; }
+.cell-date, .cell-center, .cell-url { font-size: var(--atm-table-font-size, 14px); }
+.cell-date, .cell-center, .cell-url { line-height: 1.45; }
 .cell-date { text-align: left; }
 .cell-center { text-align: center; }
 .cell-url { opacity: .72; }
@@ -91,7 +91,7 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
   box-shadow: 0 5px 20px #0003; border-radius: 8px;
   display: grid; padding: 5px;
 }
-.row-menu button { border: 0; text-align: left; }
+.row-menu button { border: 0; text-align: left; font-size: var(--atm-table-font-size, 14px); }
 .hidden { display: none; }
 .empty { padding: 24px; text-align: center; opacity: .7; }
 .top-dropdown, .dashboard-menu-wrap { position: relative; z-index: 20; }
