@@ -104,7 +104,7 @@ test('default any-age and any-time modes bypass their period filters', () => {
   assert.deepEqual(result.map(tab => tab.id), [1, 2, 3]);
 });
 
-test('window search argument filters by Firefox window ID', () => {
+test('window search argument filters by Chromium window ID', () => {
   const tabs = [
     { id: 1, windowId: 12, title: 'YouTube video', url: 'https://youtube.com/a', firstSeen: 1 },
     { id: 2, windowId: 13, title: 'YouTube video', url: 'https://youtube.com/b', firstSeen: 1 },

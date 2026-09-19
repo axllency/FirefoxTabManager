@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
-  "incognito": "spanning",
   "name": "Advanced Tab Manager",
   "version": "0.1.0",
-  "description": "Search, collect, and manage tabs across Firefox windows.",
-  "browser_specific_settings": { "gecko": { "id": "firefox-tab-manager@example.org", "strict_min_version": "142.0", "data_collection_permissions": { "required": ["none"], "optional": ["locationInfo"] } } },
-  "permissions": ["tabs", "storage", "sessions", "downloads", "topSites"],
+  "description": "Search, collect, and manage tabs across Chromium windows.",
+  "minimum_chrome_version": "120",
+  "permissions": ["tabs", "storage", "sessions", "downloads", "topSites", "favicon"],
   "host_permissions": ["https://geocoding-api.open-meteo.com/*", "https://api.open-meteo.com/*"],
-  "background": { "scripts": ["background.js"] },
+  "background": { "service_worker": "background.js" },
   "action": { "default_title": "Advanced Tab Manager" },
   "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+A" }, "description": "Find tabs" } }
 }

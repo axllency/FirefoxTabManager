@@ -1,5 +1,6 @@
 import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabel, fitColumnWidths, resizeColumns, displayUrl, rootDomainUrl, frequentSiteDisplayName, type SortDirection } from './core';
-declare const browser: any;
+declare const chrome: any;
+const browser = chrome;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
 const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
@@ -20,7 +21,11 @@ try {
   if (Array.isArray(saved) && saved.length === 8 && saved.every((width, i) => Number.isFinite(width) && width >= minColumnWidths[i] && width <= 2000)) columnWidths = saved;
 } catch { /* Ignore invalid saved layout. */ }
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
-const send = (type: string, data: any = {}) => browser.runtime.sendMessage({ type, ...data });
+const send = async (type: string, data: any = {}) => {
+  const response = await browser.runtime.sendMessage({ type, ...data });
+  if (response?.__atmError) throw Error(response.__atmError);
+  return response?.__atmResult;
+};
 const when = (time?: number) => time ? new Date(time).toLocaleString() : 'Never recorded';
 const shortDate = (time?: number) => time ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: '2-digit' }).format(time) : '—';
 const firstSeenDisplay = (time?: number) => time ? firstSeenAgeLabel(time) ?? shortDate(time) : '—';
@@ -37,7 +42,7 @@ const lastActive = (time?: number) => {
 const favicon = (url?: string) => {
   if (!url) return '';
   if (/^data:image\/(?:png|gif|jpeg|webp|svg\+xml);/i.test(url)) return url;
-  try { return ['http:', 'https:', 'moz-extension:'].includes(new URL(url).protocol) ? url : ''; } catch { return ''; }
+  try { return ['http:', 'https:', 'chrome-extension:'].includes(new URL(url).protocol) ? url : ''; } catch { return ''; }
 };
 const tabIcon = (url?: string) => {
   const src = favicon(url);
@@ -298,15 +303,16 @@ function initTopBar() {
     await refresh();
   }));
   void run(async () => {
-    const raw = await browser.topSites.get({ includeFavicon: true });
+    const raw = await browser.topSites.get();
     const unique = new Map<string, any>();
     for (const site of raw) {
       const url = rootDomainUrl(site.url); if (!url) continue;
       const existing = unique.get(url);
       const title = frequentSiteDisplayName(site.url);
-      if (!existing) unique.set(url, { url, title, favicon: site.favicon, shortened: /^www\./i.test(new URL(site.url).hostname) });
+      const faviconUrl = new URL(browser.runtime.getURL('/_favicon/'));
+      faviconUrl.searchParams.set('pageUrl', site.url); faviconUrl.searchParams.set('size', '16');
+      if (!existing) unique.set(url, { url, title, favicon: faviconUrl.href, shortened: /^www\./i.test(new URL(site.url).hostname) });
       else {
-        if (!existing.favicon && site.favicon) existing.favicon = site.favicon;
         if (!existing.shortened && /^www\./i.test(new URL(site.url).hostname)) { existing.title = title; existing.shortened = true; }
       }
     }
@@ -343,16 +349,11 @@ async function renderWeather() {
   box.innerHTML = `<label><input type="checkbox" id="weatherEnabled" ${state.weather?.enabled ? 'checked' : ''}> Enable weather</label><div class="row"><input id="place" placeholder="City or postal code"><button id="findPlace">Find</button></div><div id="placeResults"></div><div id="conditions"></div><small>Weather by Open-Meteo. Your entered location is sent to its service.</small>`;
   $('#weatherEnabled').addEventListener('change', e => run(async () => {
     const enabled = (e.target as HTMLInputElement).checked;
-    if (enabled) {
-      const ok = await browser.permissions.request({ data_collection: ['locationInfo'] });
-      if (!ok) { (e.target as HTMLInputElement).checked = false; return notice('Weather permission was not granted.'); }
-    } else await browser.permissions.remove({ data_collection: ['locationInfo'] });
     state.weather = { ...state.weather, enabled }; await send('weatherSettings', { weather: state.weather });
     if (enabled) await loadWeather(); else { summary.textContent = 'Weather off'; delete summary.dataset.location; $('#conditions').textContent = ''; }
   }));
   $('#findPlace').addEventListener('click', () => run(async () => {
     if (!state.weather.enabled) throw Error('Enable weather first.');
-    if (!(await browser.permissions.contains({ data_collection: ['locationInfo'] }))) throw Error('Location consent is off.');
     const name = ($('#place') as HTMLInputElement).value.trim(); if (name.length < 2) throw Error('Enter a city or postal code.');
     const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=8`);
     if (!response.ok) throw Error('Location search failed.');
@@ -370,7 +371,6 @@ async function loadWeather() {
   const location = state.weather?.location;
   if (!state.weather?.enabled || !location) { summary.textContent = state.weather?.enabled ? 'Choose city in Menu' : 'Weather off'; return; }
   summary.textContent = 'Loading weather…';
-  if (!(await browser.permissions.contains({ data_collection: ['locationInfo'] }))) { summary.textContent = 'Weather unavailable'; $('#conditions').textContent = 'Location consent is off.'; return; }
   try {
     const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`);
     if (!response.ok) throw Error('Weather is unavailable right now.');

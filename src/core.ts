@@ -14,8 +14,8 @@ export interface UrlUsage { lastAccess?: number; activations: number; closedAt?:
 export interface Collection { id: string; name: string; createdAt: number; pinned?: boolean; tabs: { url: string; title: string }[] }
 export interface UndoEntry { id: string; kind: 'close' | 'move'; at: number; atActiveMs?: number; tabs: TabRecord[]; destinationWindowId?: number }
 export interface Preferences { hiddenTopSites: string[]; pinnedTopSites: string[]; actionUsage: Record<string, number>; fontSize: number }
-export interface Store { closed: Record<string, TabRecord>; usage: Record<string, UrlUsage>; collections: Collection[]; undo: UndoEntry[]; retention: { elapsedMs: number; activeSince?: number }; weather?: { enabled: boolean; location?: { name: string; latitude: number; longitude: number } }; preferences: Preferences }
-export const EMPTY_STORE: Store = { closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
+export interface Store { open: Record<string, TabRecord>; closed: Record<string, TabRecord>; usage: Record<string, UrlUsage>; collections: Collection[]; undo: UndoEntry[]; retention: { elapsedMs: number; activeSince?: number }; weather?: { enabled: boolean; location?: { name: string; latitude: number; longitude: number } }; preferences: Preferences }
+export const EMPTY_STORE: Store = { open: {}, closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {}, fontSize: 14 } };
 
 export function retentionElapsed(retention: Store['retention'], currentTime: number): number {
   return retention.elapsedMs + (retention.activeSince === undefined ? 0 : Math.max(0, currentTime - retention.activeSince));

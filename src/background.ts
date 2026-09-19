@@ -1,5 +1,6 @@
 import { EMPTY_STORE, prune, urlKey, chooseDuplicateSurvivors, retentionElapsed, checkpointRetention, selectorBounds, sanitizeTabTitle, sanitizeTabUrl, type Store, type TabRecord, type UndoEntry, type Collection } from './core';
-declare const browser: any;
+declare const chrome: any;
+const browser = chrome;
 
 const live = new Map<number, TabRecord>();
 const pendingAccess = new Set<number>();
@@ -79,7 +80,16 @@ function checkpointClock() {
   store.retention = checkpointRetention({ elapsedMs: store.retention.elapsedMs, activeSince }, now());
   activeSince = store.retention.activeSince;
 }
-const save = () => { checkpointClock(); writes = writes.then(() => browser.storage.local.set({ state: store })); return writes; };
+const tabValueKey = (tabId: number) => `ftmTabRecord:${tabId}`;
+async function getTabValue(tabId: number) { return (await browser.storage.session.get(tabValueKey(tabId)))[tabValueKey(tabId)]; }
+async function setTabValue(tabId: number, value: any) { await browser.storage.session.set({ [tabValueKey(tabId)]: value }); }
+async function removeTabValue(tabId: number) { await browser.storage.session.remove(tabValueKey(tabId)); }
+const save = () => {
+  checkpointClock();
+  store.open = Object.fromEntries([...live.values()].map(record => [record.recordId, { ...record }]));
+  writes = writes.then(() => browser.storage.local.set({ state: store }));
+  return writes;
+};
 function migrateRetention(saved: any) {
   if (saved?.retention) return;
   store.retention = { elapsedMs: 0 };
@@ -96,9 +106,13 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
   tab = sanitizeBrowserTab(tab);
   if (live.has(tab.id)) return live.get(tab.id)!;
   let session: any;
-  try { session = await browser.sessions.getTabValue(tab.id, 'ftmRecord'); } catch { /* fresh tab */ }
+  try { session = await getTabValue(tab.id); } catch { /* fresh tab */ }
   if (live.has(tab.id)) return live.get(tab.id)!;
-  const restored = session?.recordId && store.closed[session.recordId];
+  const openRecord = session?.recordId && store.open[session.recordId];
+  const closedRecord = session?.recordId && store.closed[session.recordId];
+  const startupRecord = startup ? Object.values(store.open).find(record => record.url === tab.url && ![...live.values()].some(liveRecord => liveRecord.recordId === record.recordId)) : undefined;
+  const reopenedRecord = !startup && tab.url && tab.url !== 'about:blank' ? Object.values(store.closed).filter(record => record.url === tab.url).sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0))[0] : undefined;
+  const restored = closedRecord || openRecord || startupRecord || reopenedRecord;
   const record: TabRecord = restored ? { ...restored } : {
     recordId: startup && session?.recordId ? session.recordId : id(),
     firstSeen: startup && session?.firstSeen ? session.firstSeen : now(),
@@ -106,11 +120,11 @@ async function makeRecord(tab: any, startup = false): Promise<TabRecord> {
   };
   Object.assign(record, { url: tab.url === 'about:blank' && restored ? record.url : tab.url || record.url, title: tab.title || record.title, windowId: tab.windowId, index: tab.index, pinned: !!tab.pinned, cookieStoreId: tab.cookieStoreId, closedAt: undefined, closedAtActiveMs: undefined, sessionId: undefined });
   live.set(tab.id, record);
-  if (restored) delete store.closed[record.recordId];
+  if (closedRecord || reopenedRecord) delete store.closed[record.recordId];
   const usage = store.usage[urlKey(record.url)];
   if (usage) { delete usage.closedAt; delete usage.closedAtActiveMs; }
-  await browser.sessions.setTabValue(tab.id, 'ftmRecord', { recordId: record.recordId, firstSeen: record.firstSeen });
-  if (restored) await save();
+  await setTabValue(tab.id, { recordId: record.recordId, firstSeen: record.firstSeen });
+  if (closedRecord || reopenedRecord) await save();
   return record;
 }
 async function refreshTab(tabId: number) {
@@ -140,6 +154,7 @@ async function markAccess(tabId: number) {
 async function closeRecord(tabId: number) {
   const record = live.get(tabId);
   pendingAccess.delete(tabId); live.delete(tabId);
+  await removeTabValue(tabId).catch(() => {});
   if (!record) return;
   record.closedAt = now();
   record.closedAtActiveMs = activeNow();
@@ -327,7 +342,7 @@ async function undo(entryId?: string) {
             replacementWindows.set(record.windowId, restored.windowId);
           } else restored = await browser.tabs.create(opts);
           live.set(restored.id, { ...record, windowId: restored.windowId, index: restored.index, closedAt: undefined, closedAtActiveMs: undefined });
-          await browser.sessions.setTabValue(restored.id, 'ftmRecord', { recordId: record.recordId, firstSeen: record.firstSeen });
+          await setTabValue(restored.id, { recordId: record.recordId, firstSeen: record.firstSeen });
           delete store.closed[record.recordId];
         }
       } catch (e) { errors.push(`${record.title || record.url}: ${String(e)}`); }
@@ -402,26 +417,24 @@ async function action(message: any): Promise<any> {
   if (message.type === 'export') {
     const urls = tabs.map(t => t.url).filter((url: string) => /^https?:/.test(url || ''));
     if (!urls.length) throw Error('No HTTP(S) URLs to export.');
-    const objectUrl = URL.createObjectURL(new Blob([urls.join('\n') + '\n'], { type: 'text/plain' }));
-    try {
-      const downloadId = await browser.downloads.download({ url: objectUrl, filename: `firefox-tabs-${new Date().toISOString().slice(0, 10)}.txt`, saveAs: true, conflictAction: 'uniquify' });
-      await new Promise<void>((resolve, reject) => {
-        const listener = (change: any) => {
-          if (change.id !== downloadId || !change.state) return;
-          browser.downloads.onChanged.removeListener(listener);
-          if (change.state.current === 'complete') resolve(); else reject(Error('Export did not complete; tabs were kept open.'));
-        };
-        browser.downloads.onChanged.addListener(listener);
-      });
-      return { count: urls.length, errors: [] };
-    } finally { URL.revokeObjectURL(objectUrl); }
+    const downloadUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(urls.join('\n') + '\n')}`;
+    const downloadId = await browser.downloads.download({ url: downloadUrl, filename: `chromium-tabs-${new Date().toISOString().slice(0, 10)}.txt`, saveAs: true, conflictAction: 'uniquify' });
+    await new Promise<void>((resolve, reject) => {
+      const listener = (change: any) => {
+        if (change.id !== downloadId || !change.state) return;
+        browser.downloads.onChanged.removeListener(listener);
+        if (change.state.current === 'complete') resolve(); else reject(Error('Export did not complete; tabs were kept open.'));
+      };
+      browser.downloads.onChanged.addListener(listener);
+    });
+    return { count: urls.length, errors: [] };
   }
   if (message.type === 'discard') {
     const errors: string[] = []; let count = 0;
     for (const tab of tabs) try {
       await browser.tabs.discard(tab.id);
       const discarded = await browser.tabs.get(tab.id);
-      if (!discarded.discarded) throw Error('Firefox did not mark the tab as unloaded.');
+      if (!discarded.discarded) throw Error('Chromium did not mark the tab as unloaded.');
       count++;
     } catch (e) { errors.push(`${tab.title || tab.url}: ${String(e)}`); }
     return { count, errors };
@@ -442,8 +455,15 @@ async function action(message: any): Promise<any> {
   if (message.type === 'weatherSettings') { store.weather = message.weather; await save(); return true; }
   throw Error('Unknown action');
 }
-browser.runtime.onMessage.addListener((message: any, sender: any) => {
+browser.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: any) => void) => {
   const extensionRoot = browser.runtime.getURL('');
-  if (sender?.id !== browser.runtime.id || typeof sender?.url !== 'string' || !sender.url.startsWith(extensionRoot)) return Promise.reject(Error('Untrusted message sender'));
-  return action(message);
+  if (sender?.id !== browser.runtime.id || typeof sender?.url !== 'string' || !sender.url.startsWith(extensionRoot)) {
+    sendResponse({ __atmError: 'Untrusted message sender' });
+    return false;
+  }
+  action(message).then(
+    result => sendResponse({ __atmResult: result }),
+    error => sendResponse({ __atmError: error instanceof Error ? error.message : String(error) })
+  );
+  return true;
 });

@@ -6,13 +6,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
-    "lint": "node scripts/build.mjs && web-ext lint --source-dir dist",
+    "lint": "node scripts/build.mjs && node scripts/validate.mjs",
     "test": "node scripts/build.mjs && node --test tests/*.test.mjs"
   },
   "devDependencies": {
-    "@types/firefox-webext-browser": "^120.0.0",
     "esbuild": "^0.25.0",
-    "typescript": "^5.9.0",
-    "web-ext": "^10.6.0"
+    "typescript": "^5.9.0"
   }
 }
