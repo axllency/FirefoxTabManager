@@ -198,7 +198,7 @@ browser.action.onClicked.addListener((tab: any) => { void ready.then(() => openS
 async function snapshot() {
   const tabs = await normalTabs();
   await Promise.all(tabs.map((tab: any) => refreshTab(tab.id)));
-  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess, activations: store.usage[urlKey(tab.url || '')]?.activations || 0 })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId: selectorSourceWindowId ?? focusedWindowId };
+  return { tabs: tabs.map((tab: any) => ({ ...tab, muted: !!tab.mutedInfo?.muted, isLoaded: !tab.discarded, firstSeen: live.get(tab.id)?.firstSeen || now(), recordId: live.get(tab.id)?.recordId, lastAccess: store.usage[urlKey(tab.url || '')]?.lastAccess })), collections: store.collections, undo: store.undo, weather: store.weather || { enabled: false }, preferences: store.preferences, focusedWindowId: selectorSourceWindowId ?? focusedWindowId };
 }
 async function validateTabs(tabIds: number[]) {
   const results = await Promise.all([...new Set(tabIds)].map((tabId) => browser.tabs.get(tabId).catch(() => null)));

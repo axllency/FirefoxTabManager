@@ -62,7 +62,7 @@ export function chooseDuplicateSurvivors<T extends { id: number; url?: string; a
 }
 
 export type SortDirection = 'asc' | 'desc';
-export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'activations', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'hidden', 'attention', 'isArticle', 'isInReaderMode'].includes(field) ? 'desc' : 'asc';
+export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'isLoaded', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'hidden', 'attention', 'isArticle', 'isInReaderMode'].includes(field) ? 'desc' : 'asc';
 export function displayUrl(raw?: string): string {
   if (!raw) return '';
   return raw.replace(/^https:\/\//i, '').replace(/^www\./i, '');

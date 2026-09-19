@@ -12,8 +12,8 @@ let selected = new Set<number>();
 let filtered: any[] = [];
 let sortDirection: SortDirection = 'desc';
 let currentSort = 'lastAccess';
-const widthKey = 'advanced-tab-manager-column-widths-v4';
-const minColumnWidths = [22, 28, 100, 70, 76, 100, 48, 48, 28];
+const widthKey = 'advanced-tab-manager-column-widths-v5';
+const minColumnWidths = [22, 28, 100, 70, 76, 100, 48, 64, 28];
 let columnWidths: number[] | undefined;
 try {
   const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
@@ -130,6 +130,7 @@ function layout() {
     const scheduleRefresh = () => { if (refreshTimer) clearTimeout(refreshTimer); refreshTimer = setTimeout(() => { void run(refresh); }, 75); };
     browser.tabs.onCreated.addListener(scheduleRefresh);
     browser.tabs.onRemoved.addListener(scheduleRefresh);
+    browser.tabs.onUpdated.addListener(scheduleRefresh);
     browser.storage.onChanged.addListener((changes: any, area: string) => { if (area === 'local' && changes.state) scheduleRefresh(); });
   }
   initTopBar();
@@ -147,7 +148,7 @@ function renderActionOptions() {
   if (ordered.some(([value]) => value === current)) select.value = current;
 }
 function renderTabRow(t: any) {
-  return `<article class="tab-grid tab-row" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${t.activations || 0}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
+  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${String(t.isLoaded)}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
 }
 function renderTabs() {
   filtered = filterAndSortTabs(state.tabs, {
@@ -165,7 +166,7 @@ function renderTabs() {
   selectionButton.textContent = selected.size ? 'Clear selection' : 'Select results';
   selectionButton.disabled = !selected.size && !filtered.length;
   ($('#bulkGo') as HTMLButtonElement).disabled = selected.size === 0;
-  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('First seen', 'firstSeen', 3)}${heading('Last active', 'lastAccess', 4)}${heading('URL', 'url', 5)}${heading('Window', 'windowId', 6)}${heading('Activity', 'activations', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
+  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('First seen', 'firstSeen', 3)}${heading('Last active', 'lastAccess', 4)}${heading('URL', 'url', 5)}${heading('Window', 'windowId', 6)}${heading('isLoaded', 'isLoaded', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
   applyColumnWidths();
 }
 async function bulk(action: string, override?: number[]) {

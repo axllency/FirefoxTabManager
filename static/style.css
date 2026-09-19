@@ -60,6 +60,7 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 .resize-handle { position: absolute; z-index: 4; right: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
 .resize-handle:hover, .resize-handle:active { border-right: 2px solid var(--accent); }
 .tab-grid > :nth-child(n+2):nth-child(-n+8) { position: relative; align-self: stretch; min-width: 0; padding-right: 4px; border-right: 1px solid var(--line); }
+.tab-row.unloaded { opacity: .58; }
 .tab-row {
   min-height: 28px; padding-top: 2px; padding-bottom: 2px;
   border-bottom: 1px solid var(--line);

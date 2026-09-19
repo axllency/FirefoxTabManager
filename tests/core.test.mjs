@@ -120,11 +120,11 @@ test('Not search mode excludes the matching text and window expression', () => {
 
 test('sorting reverses each displayed field when direction toggles', () => {
   const tabs = [
-    { id: 1, title: 'Alpha', firstSeen: 1, lastAccess: 3, windowId: 2, activations: 4, url: 'https://a.example' },
-    { id: 2, title: 'Zulu', firstSeen: 3, lastAccess: 1, windowId: 1, activations: 2, url: 'https://z.example' }
+    { id: 1, title: 'Alpha', firstSeen: 1, lastAccess: 3, windowId: 2, isLoaded: true, url: 'https://a.example' },
+    { id: 2, title: 'Zulu', firstSeen: 3, lastAccess: 1, windowId: 1, isLoaded: false, url: 'https://z.example' }
   ];
   const base = { query: '', sort: 'title', ageMode: 'any', ageDays: 1, accessMode: 'any', accessDays: 1 };
-  for (const sort of ['title', 'firstSeen', 'lastAccess', 'windowId', 'activations', 'url']) {
+  for (const sort of ['title', 'firstSeen', 'lastAccess', 'windowId', 'isLoaded', 'url']) {
     const ascending = filterAndSortTabs(tabs, { ...base, sort, sortDirection: 'asc' }).map(tab => tab.id);
     const descending = filterAndSortTabs(tabs, { ...base, sort, sortDirection: 'desc' }).map(tab => tab.id);
     assert.deepEqual(descending, [...ascending].reverse(), sort);

@@ -31,6 +31,7 @@ test('session tabs restored after a week retain their records and last-access ti
   runInNewContext(readFileSync(new URL('../dist/background.js', import.meta.url), 'utf8'), { browser, crypto: webcrypto, structuredClone, Date: FixedDate, URL, Blob, console, setTimeout });
   const snapshot = await messageHandler({ type: 'snapshot' });
   assert.equal(snapshot.tabs.length, 2);
+  assert.deepEqual(snapshot.tabs.map(tab => tab.isLoaded), [true, true]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.lastAccess), [priorAccess, priorAccess]);
   assert.deepEqual(snapshot.tabs.map(tab => tab.firstSeen), [priorAccess - 1000, priorAccess - 1000]);
   assert.equal(Object.keys(persisted.closed).length, 0);
