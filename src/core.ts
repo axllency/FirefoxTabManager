@@ -18,9 +18,9 @@ export function checkpointRetention(retention: Store['retention'], currentTime: 
 
 export function selectorBounds(window: { left: number; top: number; width: number; height: number }) {
   return {
-    left: Math.round(window.left + window.width * 0.2),
+    left: Math.round(window.left + window.width * 0.15),
     top: Math.round(window.top + window.height * 0.1),
-    width: Math.round(window.width * 0.6),
+    width: Math.round(window.width * 0.7),
     height: Math.round(window.height * 0.8)
   };
 }
@@ -73,8 +73,7 @@ export function rootDomainUrl(raw: string): string | null {
 export function firstSeenAgeLabel(firstSeen: number, currentTime = Date.now()): string | null {
   const elapsed = Math.max(0, currentTime - firstSeen);
   if (elapsed < 86400000) return `${Math.floor(elapsed / 3600000)}h`;
-  if (elapsed < 7 * 86400000) return `${Math.floor(elapsed / 86400000)}d`;
-  return null;
+  return `${Math.floor(elapsed / 86400000)}d`;
 }
 export function fitColumnWidths(widths: number[], minimums: number[], budget: number): number[] {
   const target = Math.max(0, budget);

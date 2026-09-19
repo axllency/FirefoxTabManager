@@ -12,8 +12,8 @@ test('table URLs are compact and frequent sites collapse to root origins', () =>
   assert.equal(rootDomainUrl('https://www.example.com/a?q=1'), 'https://example.com/');
   assert.equal(rootDomainUrl('about:config'), null);
 });
-test('selector uses 20 percent horizontal and 10 percent vertical insets', () => {
-  assert.deepEqual(selectorBounds({ left: 100, top: 50, width: 1200, height: 900 }), { left: 340, top: 140, width: 720, height: 720 });
+test('selector uses 15 percent horizontal and 10 percent vertical insets', () => {
+  assert.deepEqual(selectorBounds({ left: 100, top: 50, width: 1200, height: 900 }), { left: 280, top: 140, width: 840, height: 720 });
 });
 test('URL list rejects unsafe and malformed lines', () => {
   const parsed = parseUrlFile('# comment\nhttps://example.com\n javascript:alert(1)\nnope\nhttp://mozilla.org');
@@ -141,13 +141,14 @@ test('equal primary values sort by last active and then title', () => {
   assert.deepEqual(filterAndSortTabs(tabs, options).map(tab => tab.id), [3, 2, 1]);
 });
 
-test('first-seen age switches from hours to days, then to a calendar date', () => {
+test('first-seen age switches from hours to days without calendar dates', () => {
   const now = 100 * 86400000;
   assert.equal(firstSeenAgeLabel(now, now), '0h');
   assert.equal(firstSeenAgeLabel(now - 86400000 + 1, now), '23h');
   assert.equal(firstSeenAgeLabel(now - 86400000, now), '1d');
   assert.equal(firstSeenAgeLabel(now - 7 * 86400000 + 1, now), '6d');
-  assert.equal(firstSeenAgeLabel(now - 7 * 86400000, now), null);
+  assert.equal(firstSeenAgeLabel(now - 7 * 86400000, now), '7d');
+  assert.equal(firstSeenAgeLabel(now - 30 * 86400000, now), '30d');
 });
 
 test('column resize keeps total width fixed and distributes the change to the right', () => {
@@ -167,7 +168,7 @@ test('column resize keeps total width fixed and distributes the change to the ri
   assert.ok(Math.abs(narrow.reduce((sum, width) => sum + width, 0) - 400) < 0.001);
   assert.deepEqual(resizeColumns(widths, minimums, 0, 30), widths);
   const nineWidths = [22, 28, 180, 80, 90, 180, 70, 80, 28];
-  const nineMinimums = [22, 28, 100, 70, 76, 100, 48, 64, 28];
+  const nineMinimums = [22, 28, 100, 100, 40, 76, 48, 64, 28];
   const rightmost = resizeColumns(nineWidths, nineMinimums, 7, 12);
   assert.equal(rightmost[0], 22, 'checkbox column remains fixed');
   assert.equal(rightmost[7], 92, 'rightmost data column expands');

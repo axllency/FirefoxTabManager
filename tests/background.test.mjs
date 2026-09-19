@@ -54,7 +54,7 @@ test('session tabs restored after a week retain their records and last-access ti
   assert.equal((await messageHandler({ type: 'snapshot' })).undo.length, 0, 'retention resumed after normal window opened');
   handlers.action(tabs[0]);
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [340, 140, 720, 720]);
+  assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [280, 140, 840, 720]);
   handlers.focus(99);
   await new Promise(resolve => setImmediate(resolve));
   handlers.focus(1);

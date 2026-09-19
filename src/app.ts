@@ -12,8 +12,8 @@ let selected = new Set<number>();
 let filtered: any[] = [];
 let sortDirection: SortDirection = 'desc';
 let currentSort = 'lastAccess';
-const widthKey = 'advanced-tab-manager-column-widths-v6';
-const minColumnWidths = [22, 28, 100, 100, 70, 76, 48, 64, 28];
+const widthKey = 'advanced-tab-manager-column-widths-v9';
+const minColumnWidths = [22, 28, 100, 100, 40, 76, 48, 64, 28];
 let columnWidths: number[] | undefined;
 try {
   const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
