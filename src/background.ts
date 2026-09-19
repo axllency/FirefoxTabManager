@@ -188,9 +188,10 @@ async function openSelector(tab: any) {
     await dismissSelector();
   }
   const source = tab?.windowId ? await browser.windows.get(tab.windowId) : await browser.windows.getLastFocused();
-  if ((source.type && source.type !== 'normal') || source.incognito || ![source.left, source.top, source.width, source.height].every(Number.isFinite)) return;
+  const incognito = await browser.extension.isAllowedIncognitoAccess().catch(() => false);
+  if ((source.type && source.type !== 'normal') || (source.incognito && !incognito) || ![source.left, source.top, source.width, source.height].every(Number.isFinite)) return;
   const created = await browser.windows.create({
-    url: browser.runtime.getURL('popup.html'), type: 'popup', focused: true,
+    url: browser.runtime.getURL('popup.html'), type: 'popup', focused: true, incognito,
     ...selectorBounds(source)
   });
   selectorWindowId = created.id; selectorSourceWindowId = source.id;

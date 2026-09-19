@@ -122,11 +122,11 @@ test('Not search mode excludes the matching text and window expression', () => {
 
 test('sorting reverses each displayed field when direction toggles', () => {
   const tabs = [
-    { id: 1, title: 'Alpha', firstSeen: 1, lastAccess: 3, windowId: 2, isLoaded: true, url: 'https://a.example' },
-    { id: 2, title: 'Zulu', firstSeen: 3, lastAccess: 1, windowId: 1, isLoaded: false, url: 'https://z.example' }
+    { id: 1, title: 'Alpha', firstSeen: 1, lastAccess: 3, windowId: 2, url: 'https://a.example' },
+    { id: 2, title: 'Zulu', firstSeen: 3, lastAccess: 1, windowId: 1, url: 'https://z.example' }
   ];
   const base = { query: '', sort: 'title', ageMode: 'any', ageDays: 1, accessMode: 'any', accessDays: 1 };
-  for (const sort of ['title', 'firstSeen', 'lastAccess', 'windowId', 'isLoaded', 'url']) {
+  for (const sort of ['title', 'firstSeen', 'lastAccess', 'windowId', 'url']) {
     const ascending = filterAndSortTabs(tabs, { ...base, sort, sortDirection: 'asc' }).map(tab => tab.id);
     const descending = filterAndSortTabs(tabs, { ...base, sort, sortDirection: 'desc' }).map(tab => tab.id);
     assert.deepEqual(descending, [...ascending].reverse(), sort);
@@ -169,11 +169,11 @@ test('column resize keeps total width fixed and distributes the change to the ri
   assert.equal(narrow[0], widths[0]);
   assert.ok(Math.abs(narrow.reduce((sum, width) => sum + width, 0) - 400) < 0.001);
   assert.deepEqual(resizeColumns(widths, minimums, 0, 30), widths);
-  const nineWidths = [22, 28, 180, 80, 90, 180, 70, 80, 28];
-  const nineMinimums = [22, 28, 100, 100, 40, 76, 48, 64, 28];
-  const rightmost = resizeColumns(nineWidths, nineMinimums, 7, 12);
+  const tableWidths = [22, 28, 180, 180, 40, 90, 70, 28];
+  const tableMinimums = [22, 28, 100, 100, 40, 76, 48, 28];
+  const rightmost = resizeColumns(tableWidths, tableMinimums, 6, 12);
   assert.equal(rightmost[0], 22, 'checkbox column remains fixed');
-  assert.equal(rightmost[7], 92, 'rightmost data column expands');
-  assert.equal(rightmost[8], 28, 'actions column remains fixed');
-  assert.ok(Math.abs(rightmost.reduce((sum, width) => sum + width, 0) - nineWidths.reduce((sum, width) => sum + width, 0)) < 0.001);
+  assert.equal(rightmost[6], 82, 'rightmost data column expands');
+  assert.equal(rightmost[7], 28, 'actions column remains fixed');
+  assert.ok(Math.abs(rightmost.reduce((sum, width) => sum + width, 0) - tableWidths.reduce((sum, width) => sum + width, 0)) < 0.001);
 });

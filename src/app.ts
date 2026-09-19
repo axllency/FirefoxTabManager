@@ -12,12 +12,12 @@ let selected = new Set<number>();
 let filtered: any[] = [];
 let sortDirection: SortDirection = 'desc';
 let currentSort = 'lastAccess';
-const widthKey = 'advanced-tab-manager-column-widths-v9';
-const minColumnWidths = [22, 28, 100, 100, 40, 76, 48, 64, 28];
+const widthKey = 'advanced-tab-manager-column-widths-v10';
+const minColumnWidths = [22, 28, 100, 100, 40, 76, 48, 28];
 let columnWidths: number[] | undefined;
 try {
   const saved = JSON.parse(localStorage.getItem(widthKey) || 'null');
-  if (Array.isArray(saved) && saved.length === 9 && saved.every((width, i) => Number.isFinite(width) && width >= minColumnWidths[i] && width <= 2000)) columnWidths = saved;
+  if (Array.isArray(saved) && saved.length === 8 && saved.every((width, i) => Number.isFinite(width) && width >= minColumnWidths[i] && width <= 2000)) columnWidths = saved;
 } catch { /* Ignore invalid saved layout. */ }
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 const send = (type: string, data: any = {}) => browser.runtime.sendMessage({ type, ...data });
@@ -43,7 +43,7 @@ const tabIcon = (url?: string) => {
   const src = favicon(url);
   return `<span class="site-icon" aria-hidden="true"><span class="site-icon-fallback">◉</span>${src ? `<img class="tab-favicon" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : ''}</span>`;
 };
-const heading = (label: string, field: string | undefined, index: number) => `<span class="column-heading" role="columnheader"${field ? ` aria-sort="${currentSort === field ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}"` : ''}>${field ? `<button class="sort-header" data-sort="${field}" title="Sort by ${label}">${label}<span class="sort-arrow" aria-hidden="true">${currentSort === field ? sortDirection === 'asc' ? '▲' : '▼' : ''}</span></button>` : label}${index > 0 && index < 8 ? `<span class="resize-handle" data-column="${index}" role="separator" aria-label="Resize ${label} column" title="Drag to resize column"></span>` : ''}</span>`;
+const heading = (label: string, field: string | undefined, index: number) => `<span class="column-heading" role="columnheader"${field ? ` aria-sort="${currentSort === field ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}"` : ''}>${field ? `<button class="sort-header" data-sort="${field}" title="Sort by ${label}">${label}<span class="sort-arrow" aria-hidden="true">${currentSort === field ? sortDirection === 'asc' ? '▲' : '▼' : ''}</span></button>` : label}${index > 0 && index < minColumnWidths.length - 1 ? `<span class="resize-handle" data-column="${index}" role="separator" aria-label="Resize ${label} column" title="Drag to resize column"></span>` : ''}</span>`;
 function applyColumnWidths() {
   const list = $('#tabs');
   if (!columnWidths) return;
@@ -64,10 +64,11 @@ function topBarControls() {
 function layout() {
   $('#app').innerHTML = `<header><div class="header-title"><button id="titleDashboard" class="title-button"><h1>Advanced Tab Manager</h1><small>${page === 'popup' ? 'Find tabs across windows' : 'Your tab workspace'}</small></button></div><div class="header-actions">${topBarControls()}</div></header>
   <section class="search"><div class="search-line"><select id="queryMode" aria-label="Search logical operator"><option value="is">Is</option><option value="not">Not</option></select><input id="query" type="search" placeholder="Search title, URL, or window:#" aria-label="Find tabs" autofocus><div class="filter-stack"><div><label>First seen <select id="ageMode"><option value="any">Any age</option><option value="older">Older than</option><option value="newer">Younger than</option></select></label><select id="agePeriod" aria-label="First seen age period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div><div><label>Last active <select id="accessMode"><option value="any">Any time</option><option value="within">Within</option><option value="before">Before</option></select></label><select id="accessPeriod" aria-label="Last active period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div></div></div></section>
-  <section class="toolbar"><span id="count"></span><span id="notice" role="status"></span><span class="toolbar-spacer" aria-hidden="true"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option></select><button id="bulkGo">Go</button></section>
+  <section class="toolbar"><select id="loadFilter" aria-label="Filter by loaded state"><option value="all">All tabs</option><option value="loaded">Loaded tabs</option><option value="unloaded">Unloaded tabs</option></select><span id="count"></span><span id="notice" role="status"></span><span class="toolbar-spacer" aria-hidden="true"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option></select><button id="bulkGo">Go</button></section>
   <section id="tabs" class="tab-list" role="table" aria-label="Tab results"></section>`;
   $('#query').addEventListener('input', () => { selected.clear(); renderTabs(); });
   $('#queryMode').addEventListener('input', () => { selected.clear(); renderTabs(); });
+  $('#loadFilter').addEventListener('input', () => { selected.clear(); renderTabs(); });
   for (const selector of ['#ageMode','#agePeriod','#accessMode','#accessPeriod']) $(selector).addEventListener('input', renderTabs);
   const clearActionNotice = () => { const status = $('#notice'); if (status.dataset.source === 'action') notice(''); };
   $('#bulk').addEventListener('pointerdown', clearActionNotice);
@@ -154,10 +155,12 @@ function renderActionOptions() {
   if (ordered.some(([value]) => value === current)) select.value = current;
 }
 function renderTabRow(t: any) {
-  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${String(t.isLoaded)}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
+  return `<article class="tab-grid tab-row${t.isLoaded ? '' : ' unloaded'}" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-center" role="cell">${t.windowId}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
 }
 function renderTabs() {
-  filtered = filterAndSortTabs(state.tabs, {
+  const loadFilter = ($('#loadFilter') as HTMLSelectElement).value;
+  const tabsByLoad = state.tabs.filter((tab: any) => loadFilter === 'all' || (loadFilter === 'loaded' ? tab.isLoaded : !tab.isLoaded));
+  filtered = filterAndSortTabs(tabsByLoad, {
     query: ($('#query') as HTMLInputElement).value,
     queryMode: ($('#queryMode') as HTMLSelectElement).value as 'is' | 'not',
     sort: currentSort,
@@ -172,7 +175,7 @@ function renderTabs() {
   selectionButton.textContent = selected.size ? 'Clear selection' : 'Select results';
   selectionButton.disabled = !selected.size && !filtered.length;
   ($('#bulkGo') as HTMLButtonElement).disabled = selected.size === 0;
-  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('URL', 'url', 3)}${heading('Age', 'firstSeen', 4)}${heading('Last active', 'lastAccess', 5)}${heading('Window', 'windowId', 6)}${heading('isLoaded', 'isLoaded', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
+  $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('URL', 'url', 3)}${heading('Age', 'firstSeen', 4)}${heading('Last active', 'lastAccess', 5)}${heading('Window', 'windowId', 6)}${heading('', undefined, 7)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
   applyColumnWidths();
 }
 async function bulk(action: string, override?: number[]) {

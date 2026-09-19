@@ -62,7 +62,7 @@ export function chooseDuplicateSurvivors<T extends { id: number; url?: string; a
 }
 
 export type SortDirection = 'asc' | 'desc';
-export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'isLoaded', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'hidden', 'attention', 'isArticle', 'isInReaderMode'].includes(field) ? 'desc' : 'asc';
+export const defaultSortDirection = (field: string): SortDirection => ['lastAccess', 'firstSeen', 'active', 'highlighted', 'pinned', 'audible', 'muted', 'discarded', 'autoDiscardable', 'hidden', 'attention', 'isArticle', 'isInReaderMode'].includes(field) ? 'desc' : 'asc';
 export function displayUrl(raw?: string): string {
   if (!raw) return '';
   return raw.replace(/^https:\/\//i, '').replace(/^www\./i, '');
@@ -90,8 +90,8 @@ export function fitColumnWidths(widths: number[], minimums: number[], budget: nu
   const total = result.reduce((sum, width) => sum + width, 0);
   if (total < target) {
     const extra = target - total;
-    const titleIndex = result.length === 9 ? 2 : 1;
-    const urlIndex = result.length === 9 ? 3 : 4;
+    const titleIndex = result.length >= 8 ? 2 : 1;
+    const urlIndex = result.length >= 8 ? 3 : 4;
     result[titleIndex] += extra / 2;
     result[urlIndex] += extra / 2;
   } else if (total > target) {

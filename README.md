@@ -7,7 +7,9 @@ A Firefox 142+ desktop extension for finding and managing tabs across windows. B
 1. Install Node.js 20 or later and run `npm install`.
 2. Run `npm run check`, `npm test`, and `npm run lint`.
 3. In Firefox, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `dist/manifest.json`.
-4. Click the toolbar button or use Alt+Shift+A. Firefox's **Manage Extension Shortcuts** can change the shortcut. The selector opens in a separate popup window, inset 15% horizontally and 10% vertically from the active normal window. It closes when focus moves outside or when you press Escape. Open the dashboard from the popup.
+4. Click the toolbar button or use Alt+Shift+A. Firefox's **Manage Extension Shortcuts** can change the shortcut. The selector opens in a separate popup window, inset 15% horizontally and 10% vertically from the active Firefox window. It closes when focus moves outside or when you press Escape. Open the dashboard from the popup.
+
+Enabling Firefox's **Let this extension work in Private Windows** setting lets Advanced Tab Manager open its popup in a private window instead of a regular window, which prevents that popup from returning when tabs are restored with Firefox's **Reopen Closed Tab** feature. It also lets you activate the popup from any private window. Private tabs still never appear in Advanced Tab Manager or enter its stored tab data.
 
 Click a tab-list column heading to sort by it; click again to reverse the order. Drag a column's right edge to resize it. Column widths are remembered for the popup and dashboard.
 

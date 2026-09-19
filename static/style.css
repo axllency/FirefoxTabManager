@@ -40,7 +40,7 @@ small { font-size: 12px; opacity: .7; }
 body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(--line); border-radius: 10px; }
 .tab-grid {
   display: grid;
-  grid-template-columns: var(--tab-columns, 22px 28px minmax(0, 3fr) minmax(0, 2.6fr) 40px minmax(0, 1.1fr) minmax(0, .65fr) minmax(0, .7fr) 28px);
+  grid-template-columns: var(--tab-columns, 22px 28px minmax(0, 3fr) minmax(0, 2.6fr) 40px minmax(0, 1.1fr) minmax(0, .65fr) 28px);
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -59,9 +59,9 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 .sort-arrow { color: var(--accent); font-size: 9px; }
 .resize-handle { position: absolute; z-index: 4; right: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
 .resize-handle:hover, .resize-handle:active { border-right: 2px solid var(--accent); }
-.tab-grid > :nth-child(n+2):nth-child(-n+8) { position: relative; align-self: stretch; min-width: 0; padding-right: 4px; border-right: 1px solid var(--line); }
-.tab-row.unloaded { opacity: .58; }
-.tab-row.unloaded .tab-favicon { filter: grayscale(1); opacity: .38; }
+.tab-grid > :nth-child(n+2):nth-child(-n+7) { position: relative; align-self: stretch; min-width: 0; padding-right: 4px; border-right: 1px solid var(--line); }
+.tab-row.unloaded .cell-title, .tab-row.unloaded .cell-url { opacity: .5; }
+.tab-row.unloaded .cell-icon { filter: grayscale(1); opacity: .5; }
 .tab-row {
   min-height: 28px; padding-top: 2px; padding-bottom: 2px;
   border-bottom: 1px solid var(--line);
@@ -137,7 +137,7 @@ body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(-
 #placeResults { display: grid; gap: 3px; margin: 8px 0; }
 #conditions { margin: 8px 0; font-weight: 600; }
 @media (max-width: 680px) {
-  .tab-grid { grid-template-columns: var(--tab-columns, 22px 28px minmax(0, 3fr) minmax(0, 2.6fr) 40px minmax(0, 1.1fr) minmax(0, .65fr) minmax(0, .7fr) 28px); gap: 6px; padding: 0 10px; }
+  .tab-grid { grid-template-columns: var(--tab-columns, 22px 28px minmax(0, 3fr) minmax(0, 2.6fr) 40px minmax(0, 1.1fr) minmax(0, .65fr) 28px); gap: 6px; padding: 0 10px; }
   header { padding: 8px 10px; }
   .search { padding: 7px 10px; }
   .filters { font-size: 12px; }

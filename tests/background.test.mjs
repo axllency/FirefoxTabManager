@@ -18,13 +18,15 @@ test('session tabs restored after a week retain their records and last-access ti
   const handlers = {};
   let createdWindow;
   let removedWindowId;
+  let incognitoAllowed = true;
   const event = name => ({ addListener(handler) { handlers[name] = handler; } });
   const browser = {
     storage: { local: { async get() { return { state: persisted }; }, async set(value) { persisted = value.state; } }, session: { async get() { return {}; }, async set() {}, async remove() {} } },
-    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { return id === 1 ? { id, type: 'normal', incognito: false, left: 100, top: 50, width: 1200, height: 900 } : createdWindow; }, async create(options) { createdWindow = { id: 99, type: 'popup', focused: true, ...options }; return createdWindow; }, async update() {}, async remove(id) { removedWindowId = id; }, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
+    windows: { WINDOW_ID_NONE: -1, async getAll() { return [{ id: 1, type: 'normal', incognito: false, tabs }]; }, async getLastFocused() { return { id: 1 }; }, async get(id) { if (id === 1) return { id, type: 'normal', incognito: false, left: 100, top: 50, width: 1200, height: 900 }; if (id === 2) return { id, type: 'normal', incognito: true, left: 500, top: 200, width: 1000, height: 800 }; return createdWindow; }, async create(options) { createdWindow = { id: 99, type: 'popup', focused: true, ...options }; return createdWindow; }, async update() {}, async remove(id) { removedWindowId = id; }, onFocusChanged: event('focus'), onCreated: event('windowCreated'), onRemoved: event('windowRemoved') },
     tabs: { async get(id) { return tabs.find(tab => tab.id === id); }, async query(query) { return tabs.filter(tab => tab.windowId === query.windowId && tab.active === query.active); }, async create(options) { const tab = { id: 40, windowId: options.windowId, index: tabs.length, url: options.url, title: 'Reopened video', active: !!options.active, status: 'complete', incognito: false, pinned: !!options.pinned }; tabs.push(tab); return tab; }, async update(id, changes) { Object.assign(tabs.find(tab => tab.id === id), changes); }, onCreated: event('tabCreated'), onRemoved: event('tabRemoved'), onUpdated: event('tabUpdated'), onAttached: event('tabAttached'), onMoved: event('tabMoved'), onActivated: event('activated') },
     sessions: { async getTabValue(id) { return sessionValues.get(id); }, async setTabValue(id, _key, value) { sessionValues.set(id, value); }, async getRecentlyClosed() { return []; } },
     runtime: { getURL(path) { return `moz-extension://test/${path}`; }, onMessage: { addListener(handler) { messageHandler = handler; } } },
+    extension: { async isAllowedIncognitoAccess() { return incognitoAllowed; } },
     action: { onClicked: event('action') }
   };
   class FixedDate extends Date { static now() { return clockTime; } }
@@ -55,6 +57,7 @@ test('session tabs restored after a week retain their records and last-access ti
   handlers.action(tabs[0]);
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [280, 140, 840, 720]);
+  assert.equal(createdWindow.incognito, true, 'selector requests a private browsing window');
   handlers.focus(99);
   await new Promise(resolve => setImmediate(resolve));
   handlers.focus(-1);
@@ -63,6 +66,22 @@ test('session tabs restored after a week retain their records and last-access ti
   handlers.focus(1);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(removedWindowId, 99, 'selector closes after focus leaves it');
+  incognitoAllowed = false;
+  removedWindowId = undefined;
+  handlers.action(tabs[0]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(createdWindow.incognito, false, 'selector falls back to normal browsing without private access');
+  handlers.focus(99);
+  handlers.focus(1);
+  await new Promise(resolve => setImmediate(resolve));
+  incognitoAllowed = true;
+  handlers.action({ windowId: 2 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(createdWindow.incognito, true, 'private source creates a private selector');
+  assert.deepEqual([createdWindow.left, createdWindow.top, createdWindow.width, createdWindow.height], [650, 280, 700, 640], 'private source bounds position the selector');
+  handlers.focus(99);
+  handlers.focus(1);
+  await new Promise(resolve => setImmediate(resolve));
   const closing = tabs.shift();
   handlers.tabRemoved(closing.id);
   await new Promise(resolve => setImmediate(resolve));

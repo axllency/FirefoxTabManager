@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "incognito": "spanning",
   "name": "Advanced Tab Manager",
   "version": "0.1.0",
   "description": "Search, collect, and manage tabs across Firefox windows.",
