@@ -2,7 +2,11 @@ import { parseUrlFile, filterAndSortTabs, defaultSortDirection, firstSeenAgeLabe
 declare const browser: any;
 const $ = (selector: string) => document.querySelector(selector) as HTMLElement;
 const page = document.body.dataset.page;
-const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [] } };
+const state: any = { tabs: [], collections: [], undo: [], focusedWindowId: -1, weather: { enabled: false }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {} } };
+const bulkActions = [
+  ['close', 'Close'], ['discard', 'Unload'], ['saveCollection', 'Save collection'], ['saveClose', 'Save and close'],
+  ['export', 'Export URLs'], ['move', 'Combine tabs'], ['duplicates', 'Close duplicates']
+] as const;
 let topSites: any[] = [];
 let selected = new Set<number>();
 let filtered: any[] = [];
@@ -60,12 +64,17 @@ function topBarControls() {
 
 function layout() {
   $('#app').innerHTML = `<header><div class="header-title"><button id="titleDashboard" class="title-button"><h1>Advanced Tab Manager</h1><small>${page === 'popup' ? 'Find tabs across windows' : 'Your tab workspace'}</small></button></div><div class="header-actions">${topBarControls()}</div></header>
-  <section class="search"><div class="search-line"><input id="query" type="search" placeholder="Search title or URL" aria-label="Find tabs" autofocus><div class="filter-stack"><div><label>First seen <select id="ageMode"><option value="any">Any age</option><option value="older">Older than</option><option value="newer">Younger than</option></select></label><select id="agePeriod" aria-label="First seen age period" disabled><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div><div><label>Last active <select id="accessMode"><option value="any">Any time</option><option value="within">Within</option><option value="before">Before</option></select></label><select id="accessPeriod" aria-label="Last active period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div></div></div></section>
-  <section class="toolbar"><span id="count"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option><option value="close">Close</option><option value="discard">Unload</option><option value="saveCollection">Save collection</option><option value="saveClose">Save and close</option><option value="exportClose">Export URLs and close</option><option value="move">Move to window</option><option value="duplicates">Close duplicates</option></select><button id="bulkGo">Go</button></section>
-  <div id="notice" role="status"></div><section id="tabs" class="tab-list" role="table" aria-label="Tab results"></section>`;
+  <section class="search"><div class="search-line"><select id="queryMode" aria-label="Search logical operator"><option value="is">Is</option><option value="not">Not</option></select><input id="query" type="search" placeholder="Search title, URL, or window:#" aria-label="Find tabs" autofocus><div class="filter-stack"><div><label>First seen <select id="ageMode"><option value="any">Any age</option><option value="older">Older than</option><option value="newer">Younger than</option></select></label><select id="agePeriod" aria-label="First seen age period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div><div><label>Last active <select id="accessMode"><option value="any">Any time</option><option value="within">Within</option><option value="before">Before</option></select></label><select id="accessPeriod" aria-label="Last active period"><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="30">30 days</option></select></div></div></div></section>
+  <section class="toolbar"><span id="count"></span><span id="notice" role="status"></span><span class="toolbar-spacer" aria-hidden="true"></span><button id="selectAll">Select results</button><select id="bulk" aria-label="Bulk action"><option value="">Actions…</option></select><button id="bulkGo">Go</button></section>
+  <section id="tabs" class="tab-list" role="table" aria-label="Tab results"></section>`;
   $('#query').addEventListener('input', () => { selected.clear(); renderTabs(); });
+  $('#queryMode').addEventListener('input', () => { selected.clear(); renderTabs(); });
   for (const selector of ['#ageMode','#agePeriod','#accessMode','#accessPeriod']) $(selector).addEventListener('input', renderTabs);
-  $('#bulkGo').addEventListener('click', async () => { const value = ($('#bulk') as HTMLSelectElement).value; if (value) await bulk(value); else notice('Choose an action first.'); });
+  const clearActionNotice = () => { const status = $('#notice'); if (status.dataset.source === 'action') notice(''); };
+  $('#bulk').addEventListener('pointerdown', clearActionNotice);
+  $('#bulk').addEventListener('keydown', clearActionNotice);
+  $('#bulk').addEventListener('change', clearActionNotice);
+  $('#bulkGo').addEventListener('click', async () => { const value = ($('#bulk') as HTMLSelectElement).value; if (value) await bulk(value); else notice('Choose an action first.', 'action'); });
   $('#selectAll').addEventListener('click', () => { if (selected.size) selected.clear(); else filtered.forEach(t => selected.add(t.id)); renderTabs(); });
   $('#undo').addEventListener('click', () => run(async () => { const r = await send('undo'); notice(`Restored ${r.count} tab(s). ${r.errors.join(' ')}`); await refresh(); }));
   if (page === 'popup') $('#dashboard').addEventListener('click', () => send('openDashboard'));
@@ -125,16 +134,25 @@ function layout() {
   }
   initTopBar();
 }
-function notice(message: string) { $('#notice').textContent = message; }
-async function run(fn: () => Promise<void>) { try { await fn(); } catch (e) { notice(String(e)); } }
-async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
+function notice(message: string, source = 'general') { const status = $('#notice'); status.textContent = message; status.dataset.source = message ? source : ''; }
+async function run(fn: () => Promise<void>, source = 'general') { try { await fn(); } catch (e) { notice(String(e), source); } }
+async function refresh() { Object.assign(state, await send('snapshot')); selected = new Set([...selected].filter(id => state.tabs.some((t: any) => t.id === id))); renderActionOptions(); renderTabs(); renderCollections(); renderTopSites(); await renderWeather(); }
+function renderActionOptions() {
+  const select = $('#bulk') as HTMLSelectElement;
+  const current = select.value;
+  const usage = state.preferences?.actionUsage || {};
+  const useCount = (action: string) => (usage[action] || 0) + (action === 'export' ? usage.exportClose || 0 : 0);
+  const ordered = [...bulkActions].sort((a, b) => useCount(b[0]) - useCount(a[0]) || bulkActions.findIndex(item => item[0] === a[0]) - bulkActions.findIndex(item => item[0] === b[0]));
+  select.innerHTML = `<option value="">Actions…</option>${ordered.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}`;
+  if (ordered.some(([value]) => value === current)) select.value = current;
+}
 function renderTabRow(t: any) {
   return `<article class="tab-grid tab-row" role="row" data-tab-id="${t.id}" title="${esc(t.url || '')}"><span class="cell-check" role="cell"><input type="checkbox" aria-label="Select ${esc(t.title)}" ${selected.has(t.id) ? 'checked' : ''}></span><span class="cell-icon" role="cell">${tabIcon(t.favIconUrl)}</span><strong class="cell-title" role="cell"><span class="title-text">${esc(t.title || t.url || 'Untitled tab')}</span>${t.pinned ? '<span class="flag" aria-label="Pinned">●</span>' : ''}${t.audible ? '<span class="flag" aria-label="Audible">♪</span>' : ''}${t.mutedInfo?.muted ? '<span class="flag" aria-label="Muted">×</span>' : ''}${t.discarded ? '<span class="flag" aria-label="Unloaded">○</span>' : ''}</strong><span class="cell-date" role="cell">${esc(firstSeenDisplay(t.firstSeen))}</span><span class="cell-date" role="cell">${esc(lastActive(t.lastAccess))}</span><span class="cell-url" role="cell">${esc(displayUrl(t.url))}</span><span class="cell-center" role="cell">${t.windowId}</span><span class="cell-center" role="cell">${t.activations || 0}</span><button class="more" aria-label="Tab actions">⋮</button><div class="row-menu hidden"><button data-action="saveCollection">Save</button><button data-action="discard">Unload</button><button data-action="close">Close</button></div></article>`;
 }
 function renderTabs() {
-  ($('#agePeriod') as HTMLSelectElement).disabled = ($('#ageMode') as HTMLSelectElement).value === 'any';
   filtered = filterAndSortTabs(state.tabs, {
     query: ($('#query') as HTMLInputElement).value,
+    queryMode: ($('#queryMode') as HTMLSelectElement).value as 'is' | 'not',
     sort: currentSort,
     sortDirection,
     ageMode: ($('#ageMode') as HTMLSelectElement).value as 'any' | 'older' | 'newer',
@@ -146,12 +164,14 @@ function renderTabs() {
   const selectionButton = $('#selectAll') as HTMLButtonElement;
   selectionButton.textContent = selected.size ? 'Clear selection' : 'Select results';
   selectionButton.disabled = !selected.size && !filtered.length;
+  ($('#bulkGo') as HTMLButtonElement).disabled = selected.size === 0;
   $('#tabs').innerHTML = `<div class="tab-grid tab-heading" role="row">${heading('', undefined, 0)}${heading('', undefined, 1)}${heading('Title', 'title', 2)}${heading('First seen', 'firstSeen', 3)}${heading('Last active', 'lastAccess', 4)}${heading('URL', 'url', 5)}${heading('Window', 'windowId', 6)}${heading('Activity', 'activations', 7)}${heading('', undefined, 8)}</div>` + (filtered.length ? filtered.map(renderTabRow).join('') : '<p class="empty">No matching tabs</p>');
   applyColumnWidths();
 }
 async function bulk(action: string, override?: number[]) {
+  const usageAction = action;
   const ids = override || [...selected];
-  if (!ids.length && action !== 'duplicates') return notice('No tabs selected.');
+  if (!ids.length) return notice('No tabs selected.', 'action');
   let payload: any = { tabIds: ids };
   if (action === 'saveCollection' || action === 'saveClose') {
     const name = prompt('Collection name', `Collection ${new Date().toLocaleDateString()}`); if (!name) return;
@@ -162,10 +182,10 @@ async function bulk(action: string, override?: number[]) {
     payload.windowId = 'new';
     payload.tabIds = filtered.filter(t => ids.includes(t.id)).map(t => t.id);
   }
-  if (['close','duplicates','exportClose'].includes(action) || payload.close) {
+  if (['close','duplicates'].includes(action) || payload.close) {
     if (!confirm(`Proceed with ${action} for ${action === 'duplicates' ? 'all duplicate tabs' : `${ids.length} tab(s)`}?`)) return;
   }
-  await run(async () => { const result = await send(action, payload); notice(result?.errors ? `${result.count} completed. ${result.errors.join(' ')}` : 'Done.'); selected.clear(); await refresh(); });
+  await run(async () => { const result = await send(action, payload); await send('recordActionUsage', { action: usageAction }); notice(result?.errors ? `${result.count} completed. ${result.errors.join(' ')}` : 'Done.', 'action'); selected.clear(); await refresh(); }, 'action');
 }
 function initTopBar() {
   const menu = $('#dashboardMenu');

@@ -5,9 +5,9 @@ export interface TabRecord { recordId: string; firstSeen: number; url: string; t
 export interface UrlUsage { lastAccess?: number; activations: number; closedAt?: number; closedAtActiveMs?: number }
 export interface Collection { id: string; name: string; createdAt: number; pinned?: boolean; tabs: { url: string; title: string }[] }
 export interface UndoEntry { id: string; kind: 'close' | 'move'; at: number; atActiveMs?: number; tabs: TabRecord[]; destinationWindowId?: number }
-export interface Preferences { hiddenTopSites: string[]; pinnedTopSites: string[] }
+export interface Preferences { hiddenTopSites: string[]; pinnedTopSites: string[]; actionUsage: Record<string, number> }
 export interface Store { closed: Record<string, TabRecord>; usage: Record<string, UrlUsage>; collections: Collection[]; undo: UndoEntry[]; retention: { elapsedMs: number; activeSince?: number }; weather?: { enabled: boolean; location?: { name: string; latitude: number; longitude: number } }; preferences: Preferences }
-export const EMPTY_STORE: Store = { closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [] } };
+export const EMPTY_STORE: Store = { closed: {}, usage: {}, collections: [], undo: [], retention: { elapsedMs: 0 }, preferences: { hiddenTopSites: [], pinnedTopSites: [], actionUsage: {} } };
 
 export function retentionElapsed(retention: Store['retention'], currentTime: number): number {
   return retention.elapsedMs + (retention.activeSince === undefined ? 0 : Math.max(0, currentTime - retention.activeSince));
@@ -114,18 +114,26 @@ export function resizeColumns(widths: number[], minimums: number[], index: numbe
   for (let i = index + 1; i < result.length; i++) result[i] -= change * weights[i - index - 1] / weightTotal;
   return result;
 }
-export interface TabFilter { query: string; sort: string; sortDirection?: SortDirection; ageMode: 'any' | 'older' | 'newer'; ageDays: number; accessMode: 'any' | 'within' | 'before'; accessDays: number }
+export interface TabFilter { query: string; queryMode?: 'is' | 'not'; sort: string; sortDirection?: SortDirection; ageMode: 'any' | 'older' | 'newer'; ageDays: number; accessMode: 'any' | 'within' | 'before'; accessDays: number }
 export function filterAndSortTabs<T extends { id: number; title?: string; url?: string; firstSeen: number; lastAccess?: number; [key: string]: any }>(tabs: T[], options: TabFilter, currentTime = Date.now()): T[] {
-  const query = options.query.toLocaleLowerCase();
-  const ageCutoff = currentTime - options.ageDays * 86400000;
-  const cutoff = currentTime - options.accessDays * 86400000;
+  let windowId: number | null = null;
+  const query = options.query.replace(/(?:^|\s)window:(\d+)(?=\s|$)/gi, (_match, id) => {
+    windowId = Number(id);
+    return ' ';
+  }).trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  const ageCutoff = options.ageMode === 'any' ? null : currentTime - options.ageDays * 86400000;
+  const cutoff = options.accessMode === 'any' ? null : currentTime - options.accessDays * 86400000;
   const direction = options.sortDirection || defaultSortDirection(options.sort);
   return tabs.filter(tab => {
-    if (!(tab.title || '').toLocaleLowerCase().includes(query) && !(tab.url || '').toLocaleLowerCase().includes(query)) return false;
-    if (options.ageMode === 'older' && tab.firstSeen >= ageCutoff) return false;
-    if (options.ageMode === 'newer' && tab.firstSeen < ageCutoff) return false;
-    if (options.accessMode === 'within' && (!tab.lastAccess || tab.lastAccess < cutoff)) return false;
-    if (options.accessMode === 'before' && (!tab.lastAccess || tab.lastAccess >= cutoff)) return false;
+    const hasSearch = windowId !== null || query.length > 0;
+    const windowMatches = windowId === null || tab.windowId === windowId;
+    const textMatches = !query || (tab.title || '').toLocaleLowerCase().includes(query) || (tab.url || '').toLocaleLowerCase().includes(query);
+    const searchMatches = windowMatches && textMatches;
+    if (hasSearch && (options.queryMode === 'not' ? searchMatches : !searchMatches)) return false;
+    if (options.ageMode === 'older' && tab.firstSeen >= ageCutoff!) return false;
+    if (options.ageMode === 'newer' && tab.firstSeen < ageCutoff!) return false;
+    if (options.accessMode === 'within' && (!tab.lastAccess || tab.lastAccess < cutoff!)) return false;
+    if (options.accessMode === 'before' && (!tab.lastAccess || tab.lastAccess >= cutoff!)) return false;
     return true;
   }).sort((a, b) => {
     const av = a[options.sort], bv = b[options.sort];

@@ -300,6 +300,12 @@ async function action(message: any): Promise<any> {
     if (message.enabled) store.preferences[message.preference === 'hidden' ? 'pinnedTopSites' : 'hiddenTopSites'] = other.filter(url => url !== message.url);
     await save(); return store.preferences;
   }
+  if (message.type === 'recordActionUsage') {
+    const allowed = new Set(['close', 'discard', 'saveCollection', 'saveClose', 'export', 'move', 'duplicates']);
+    if (!allowed.has(message.action)) throw Error('Unknown action usage key');
+    store.preferences.actionUsage[message.action] = (store.preferences.actionUsage[message.action] || 0) + 1;
+    await save(); return store.preferences.actionUsage;
+  }
   if (message.type === 'openCollection') {
     const collection = store.collections.find(c => c.id === message.collectionId); if (!collection) throw Error('Collection not found');
     const items = message.url ? collection.tabs.filter(t => t.url === message.url).slice(0, 1) : collection.tabs;
@@ -318,7 +324,7 @@ async function action(message: any): Promise<any> {
     return doClose(tabs);
   }
   if (message.type === 'close') return doClose(tabs);
-  if (message.type === 'exportClose') {
+  if (message.type === 'export') {
     const urls = tabs.map(t => t.url).filter((url: string) => /^https?:/.test(url || ''));
     if (!urls.length) throw Error('No HTTP(S) URLs to export.');
     const objectUrl = URL.createObjectURL(new Blob([urls.join('\n') + '\n'], { type: 'text/plain' }));
@@ -332,7 +338,7 @@ async function action(message: any): Promise<any> {
         };
         browser.downloads.onChanged.addListener(listener);
       });
-      return doClose(tabs);
+      return { count: urls.length, errors: [] };
     } finally { URL.revokeObjectURL(objectUrl); }
   }
   if (message.type === 'discard') {

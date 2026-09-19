@@ -11,7 +11,7 @@ A Firefox 142+ desktop extension for finding and managing tabs across windows. B
 
 Click a tab-list column heading to sort by it; click again to reverse the order. Drag a column's right edge to resize it. Column widths are remembered for the popup and dashboard.
 
-Choose a bulk action, select tabs, and press **Go** to run it. **Move to window** always creates a new window in the current table order, with the top row placed at the right. Collections and frequent root domains can be pinned or removed from their dropdowns; removed frequent sites can be restored under **Menu → Settings**.
+Choose a bulk action, select tabs, and press **Go** to run it. **Combine tabs** always creates a new window in the current table order, with the top row placed at the right. Collections and frequent root domains can be pinned or removed from their dropdowns; removed frequent sites can be restored under **Menu → Settings**.
 
 Both the popup and dashboard show **Collections** and **Frequently visited** dropdowns beside the title. The top bar shows the selected city's current weather and today's high and low; use **Menu** to configure Weather or access Undo.
 

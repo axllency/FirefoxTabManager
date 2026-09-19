@@ -79,6 +79,45 @@ test('filtering respects first-seen age and shared access cutoffs', () => {
   }
 });
 
+test('default any-age and any-time modes bypass their period filters', () => {
+  const now = new Date('2026-09-18T12:00:00').getTime();
+  const tabs = [
+    { id: 1, title: 'Old and accessed', firstSeen: now - 365 * 86400000, lastAccess: now - 365 * 86400000 },
+    { id: 2, title: 'New and accessed', firstSeen: now, lastAccess: now },
+    { id: 3, title: 'No access record', firstSeen: now - 10 * 86400000 }
+  ];
+  const result = filterAndSortTabs(tabs, {
+    query: '', sort: 'id', sortDirection: 'asc',
+    ageMode: 'any', ageDays: 1,
+    accessMode: 'any', accessDays: 1
+  }, now);
+  assert.deepEqual(result.map(tab => tab.id), [1, 2, 3]);
+});
+
+test('window search argument filters by Firefox window ID', () => {
+  const tabs = [
+    { id: 1, windowId: 12, title: 'YouTube video', url: 'https://youtube.com/a', firstSeen: 1 },
+    { id: 2, windowId: 13, title: 'YouTube video', url: 'https://youtube.com/b', firstSeen: 1 },
+    { id: 3, windowId: 12, title: 'Documentation', url: 'https://example.com', firstSeen: 1 }
+  ];
+  const base = { sort: 'id', sortDirection: 'asc', ageMode: 'any', ageDays: 1, accessMode: 'any', accessDays: 1 };
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: 'window:12' }).map(tab => tab.id), [1, 3]);
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: 'youtube window:12' }).map(tab => tab.id), [1]);
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: 'WINDOW:13 youtube' }).map(tab => tab.id), [2]);
+});
+
+test('Not search mode excludes the matching text and window expression', () => {
+  const tabs = [
+    { id: 1, windowId: 12, title: 'YouTube video', url: 'https://youtube.com/a', firstSeen: 1 },
+    { id: 2, windowId: 13, title: 'YouTube video', url: 'https://youtube.com/b', firstSeen: 1 },
+    { id: 3, windowId: 12, title: 'Documentation', url: 'https://example.com', firstSeen: 1 }
+  ];
+  const base = { sort: 'id', sortDirection: 'asc', ageMode: 'any', ageDays: 1, accessMode: 'any', accessDays: 1 };
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: 'youtube', queryMode: 'not' }).map(tab => tab.id), [3]);
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: 'youtube window:12', queryMode: 'not' }).map(tab => tab.id), [2, 3]);
+  assert.deepEqual(filterAndSortTabs(tabs, { ...base, query: '', queryMode: 'not' }).map(tab => tab.id), [1, 2, 3]);
+});
+
 test('sorting reverses each displayed field when direction toggles', () => {
   const tabs = [
     { id: 1, title: 'Alpha', firstSeen: 1, lastAccess: 3, windowId: 2, activations: 4, url: 'https://a.example' },

@@ -33,8 +33,8 @@ small { font-size: 12px; opacity: .7; }
 .filter-stack label { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 3px; }
 .filter-stack select { min-width: 0; padding: 2px 4px; }
 .toolbar { padding: 0 14px 6px; flex-wrap: wrap; gap: 6px; font-size: 12px; }
-.toolbar span { margin-right: auto; }
-#notice { padding: 0 14px; color: #c04d3d; }
+.toolbar-spacer { flex: 1; }
+#notice { color: #c04d3d; }
 #notice:empty { display: none; }
 .tab-list { border-top: 1px solid var(--line); overflow-x: hidden; overflow-y: auto; max-height: 410px; }
 body[data-page=dashboard] .tab-list { max-height: 570px; border: 1px solid var(--line); border-radius: 10px; }

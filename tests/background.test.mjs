@@ -75,4 +75,7 @@ test('session tabs restored after a week retain their records and last-access ti
   const preferenceSnapshot = await messageHandler({ type: 'snapshot' });
   assert.equal(preferenceSnapshot.collections[0].pinned, true);
   assert.deepEqual(Array.from(preferenceSnapshot.preferences.hiddenTopSites), ['https://example.com/']);
+  await messageHandler({ type: 'recordActionUsage', action: 'move' });
+  await messageHandler({ type: 'recordActionUsage', action: 'move' });
+  assert.equal((await messageHandler({ type: 'snapshot' })).preferences.actionUsage.move, 2);
 });
